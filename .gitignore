@@ -1,0 +1,24 @@
+# Rust
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (website)
+website/node_modules/
+
+# Build artifacts
+*.log
+*.tmp
+
+# License files (user-specific)
+license.json

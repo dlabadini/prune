@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prune - Detect AI-Generated Code Debt</title>
+  <meta name="description" content="Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-container">
+      <a href="/" class="logo">prune</a>
+      <div class="nav-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/prunecode/prune">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <h1>Your AI copilot writes code.<br>Prune keeps it clean.</h1>
+      <p class="hero-sub">Detect structural anti-patterns in TypeScript codebases.<br>Duplicated interfaces. God files. Dead exports. Found in seconds.</p>
+
+      <div class="install-box">
+        <code>curl -fsSL https://prunecode.ai/install.sh | sh</code>
+        <button class="copy-btn" onclick="copyInstall()">Copy</button>
+      </div>
+
+      <p class="install-alt">or <code>cargo install prune</code></p>
+    </section>
+
+    <!-- Problem -->
+    <section class="section">
+      <h2>The Problem</h2>
+      <p>AI coding assistants generate code fast. Too fast. They don't see your existing abstractions, so they create new ones. Every time.</p>
+      <div class="problem-grid">
+        <div class="problem-card">
+          <h3>Interface Sprawl</h3>
+          <p>20 variations of <code>UserData</code>, <code>UserInfo</code>, <code>UserDTO</code> across your codebase.</p>
+        </div>
+        <div class="problem-card">
+          <h3>God Files</h3>
+          <p><code>utils.ts</code> with 50 exports because it was convenient to add "just one more function."</p>
+        </div>
+        <div class="problem-card">
+          <h3>Dead Exports</h3>
+          <p>Symbols exported but never imported. Cluttering autocomplete. Confusing new devs.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Solution -->
+    <section class="section">
+      <h2>The Solution</h2>
+      <p>Prune scans your codebase and finds these patterns. Run it locally. No cloud. No config needed.</p>
+
+      <div class="terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+        </div>
+        <pre class="terminal-body">$ prune
+
+Scanning... 847 files in 3.2s
+
+Found 23 issues:
+
+<span class="high">[HIGH]</span> God File: src/utils/helpers.ts
+       47 exports, 1,200 lines
+
+<span class="high">[HIGH]</span> Interface Sprawl: UserData pattern
+       5 similar types across 4 files
+
+<span class="medium">[MED]</span>  Dead Export: formatCurrency
+       Exported but never imported
+
+Press 'p' for refactor plan, 'q' to quit</pre>
+      </div>
+    </section>
+
+    <!-- Patterns -->
+    <section class="section">
+      <h2>What Prune Detects</h2>
+      <div class="pattern-grid">
+        <div class="pattern-card">
+          <h3>God Files</h3>
+          <p>Files with too many exports or lines of code that should be split.</p>
+        </div>
+        <div class="pattern-card">
+          <h3>Interface Sprawl</h3>
+          <p>Duplicate or near-duplicate type definitions across your codebase.</p>
+        </div>
+        <div class="pattern-card">
+          <h3>Redundant Logic</h3>
+          <p>Functions with similar implementations that should be consolidated.</p>
+        </div>
+        <div class="pattern-card">
+          <h3>Barrel Bloat</h3>
+          <p>index.ts files re-exporting too many modules, hurting tree-shaking.</p>
+        </div>
+        <div class="pattern-card">
+          <h3>Dead Exports</h3>
+          <p>Exported symbols that are never imported anywhere.</p>
+        </div>
+        <div class="pattern-card">
+          <h3>Over-Abstraction</h3>
+          <p>Wrapper functions that just call another function with no added value.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pricing -->
+    <section class="section pricing-section">
+      <h2>Pricing</h2>
+      <p>Start with a 14-day trial. No credit card required.</p>
+
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Solo</h3>
+          <div class="price">$29</div>
+          <div class="price-period">one-time</div>
+          <ul>
+            <li>CLI tool</li>
+            <li>All 6 pattern detectors</li>
+            <li>Refactor plans</li>
+            <li>1 year of updates</li>
+          </ul>
+          <a href="#" class="btn" data-product="solo">Buy Solo</a>
+        </div>
+
+        <div class="pricing-card featured">
+          <div class="featured-badge">Popular</div>
+          <h3>Pro</h3>
+          <div class="price">$99</div>
+          <div class="price-period">per year</div>
+          <ul>
+            <li>Everything in Solo</li>
+            <li>Watch mode</li>
+            <li>Desktop app (coming soon)</li>
+            <li>Priority support</li>
+          </ul>
+          <a href="#" class="btn btn-primary" data-product="pro">Buy Pro</a>
+        </div>
+
+        <div class="pricing-card">
+          <h3>Team</h3>
+          <div class="price">$249</div>
+          <div class="price-period">per year</div>
+          <ul>
+            <li>Everything in Pro</li>
+            <li>5 seats included</li>
+            <li>CI integration</li>
+            <li>Shared .prunerc config</li>
+          </ul>
+          <a href="#" class="btn" data-product="team">Buy Team</a>
+        </div>
+      </div>
+
+      <p class="pricing-note">Need more seats or custom terms? <a href="mailto:hello@prune.dev">Contact us</a></p>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+      <h2>Try Prune in 30 seconds</h2>
+      <div class="install-box">
+        <code>curl -fsSL https://prunecode.ai/install.sh | sh && prune</code>
+        <button class="copy-btn" onclick="copyCTA()">Copy</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-left">
+        <span class="logo">prune</span>
+        <span class="footer-copy">&copy; 2024 Prune Dev</span>
+      </div>
+      <div class="footer-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/prunecode/prune">GitHub</a>
+        <a href="mailto:hello@prune.dev">Contact</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    function copyInstall() {
+      navigator.clipboard.writeText('curl -fsSL https://prunecode.ai/install.sh | sh');
+      event.target.textContent = 'Copied!';
+      setTimeout(() => event.target.textContent = 'Copy', 2000);
+    }
+
+    function copyCTA() {
+      navigator.clipboard.writeText('curl -fsSL https://prunecode.ai/install.sh | sh && prune');
+      event.target.textContent = 'Copied!';
+      setTimeout(() => event.target.textContent = 'Copy', 2000);
+    }
+  </script>
+</body>
+</html>

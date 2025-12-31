@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docs - Prune</title>
+  <meta name="description" content="Prune documentation. Learn how to install, configure, and use Prune to detect anti-patterns in your TypeScript codebase.">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-container">
+      <a href="/" class="logo">prune</a>
+      <div class="nav-links">
+        <a href="/docs" class="active">Docs</a>
+        <a href="https://github.com/prunecode/prune">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="docs-layout">
+    <aside class="docs-sidebar">
+      <nav class="docs-nav">
+        <a href="#installation">Installation</a>
+        <a href="#quick-start">Quick Start</a>
+        <a href="#commands">Commands</a>
+        <a href="#configuration">Configuration</a>
+        <a href="#patterns">Patterns</a>
+        <a href="#license">License</a>
+      </nav>
+    </aside>
+
+    <main class="docs-content">
+      <h1>Documentation</h1>
+
+      <section id="installation">
+        <h2>Installation</h2>
+
+        <h3>Quick Install (macOS/Linux)</h3>
+        <pre><code>curl -fsSL https://prunecode.ai/install.sh | sh</code></pre>
+
+        <h3>Cargo</h3>
+        <pre><code>cargo install prune</code></pre>
+
+        <h3>Manual Download</h3>
+        <p>Download the latest release from <a href="https://github.com/prunecode/prune/releases">GitHub Releases</a>.</p>
+      </section>
+
+      <section id="quick-start">
+        <h2>Quick Start</h2>
+
+        <p>Navigate to your TypeScript project and run:</p>
+        <pre><code>cd your-project
+prune</code></pre>
+
+        <p>This launches the interactive TUI. Use arrow keys to navigate, <code>Enter</code> to expand findings, <code>p</code> to generate a refactor plan.</p>
+
+        <h3>Headless Mode</h3>
+        <pre><code># JSON output for CI
+prune scan --json
+
+# Watch mode
+prune scan --watch</code></pre>
+      </section>
+
+      <section id="commands">
+        <h2>Commands</h2>
+
+        <h3>prune</h3>
+        <p>Launch interactive TUI (default).</p>
+
+        <h3>prune scan</h3>
+        <p>Scan and output findings to stdout.</p>
+        <pre><code>prune scan           # Human-readable output
+prune scan --json    # JSON output
+prune scan --watch   # Watch for changes</code></pre>
+
+        <h3>prune plan &lt;id&gt;</h3>
+        <p>Generate a refactor plan for a specific finding.</p>
+        <pre><code>prune plan abc123          # Print to stdout
+prune plan abc123 --copy   # Copy to clipboard
+prune plan abc123 -o plan.md</code></pre>
+
+        <h3>prune init</h3>
+        <p>Create a <code>.prunerc</code> configuration file.</p>
+        <pre><code>prune init
+prune init --force   # Overwrite existing</code></pre>
+
+        <h3>prune config</h3>
+        <p>Show current configuration.</p>
+
+        <h3>prune license</h3>
+        <p>Manage your license.</p>
+        <pre><code>prune license status
+prune license trial --email you@example.com
+prune license activate PRUNE-SOLO-XXXXXX --email you@example.com</code></pre>
+      </section>
+
+      <section id="configuration">
+        <h2>Configuration</h2>
+
+        <p>Create a <code>.prunerc</code> file in your project root:</p>
+
+        <pre><code># .prunerc
+strictness = "default"  # relaxed | default | strict
+
+# Exclude patterns (glob)
+exclude = [
+  "node_modules/**",
+  "dist/**",
+  "**/*.test.ts",
+  "legacy/**"
+]
+
+# Disable specific patterns
+disabled_patterns = []
+
+# Custom thresholds (optional)
+[thresholds]
+god_file_max_exports = 30
+god_file_max_lines = 800
+interface_sprawl_similarity = 0.75
+redundant_logic_similarity = 0.80
+barrel_bloat_threshold = 15</code></pre>
+
+        <h3>Strictness Levels</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Level</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>relaxed</code></td>
+              <td>Higher thresholds, fewer findings. Good for legacy codebases.</td>
+            </tr>
+            <tr>
+              <td><code>default</code></td>
+              <td>Balanced thresholds for most projects.</td>
+            </tr>
+            <tr>
+              <td><code>strict</code></td>
+              <td>Lower thresholds, more findings. For greenfield projects.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="patterns">
+        <h2>Patterns</h2>
+
+        <h3>God File</h3>
+        <p>Files with too many exports or lines of code. These become maintenance nightmares and make it hard to understand what a module is responsible for.</p>
+        <p><strong>Default threshold:</strong> 30 exports or 1000 lines</p>
+
+        <h3>Interface Sprawl</h3>
+        <p>Multiple type definitions that are nearly identical. Common when AI generates new types instead of reusing existing ones.</p>
+        <p><strong>Default threshold:</strong> 80% structural similarity, 3+ occurrences</p>
+
+        <h3>Redundant Logic</h3>
+        <p>Functions with similar implementations that could be consolidated.</p>
+        <p><strong>Default threshold:</strong> 85% body similarity</p>
+
+        <h3>Barrel Bloat</h3>
+        <p><code>index.ts</code> files that re-export too many modules, defeating tree-shaking and increasing bundle size.</p>
+        <p><strong>Default threshold:</strong> 20 re-exports</p>
+
+        <h3>Dead Exports</h3>
+        <p>Symbols that are exported but never imported anywhere in the codebase.</p>
+
+        <h3>Over-Abstraction</h3>
+        <p>Wrapper functions that just call another function with no transformation. Adds indirection without value.</p>
+      </section>
+
+      <section id="license">
+        <h2>License</h2>
+
+        <h3>Start a Trial</h3>
+        <pre><code>prune license trial --email you@example.com</code></pre>
+        <p>14-day free trial with all features.</p>
+
+        <h3>Activate a License</h3>
+        <pre><code>prune license activate PRUNE-SOLO-XXXXXX-XXXXXX-XXXXXX --email you@example.com</code></pre>
+
+        <h3>Check Status</h3>
+        <pre><code>prune license status</code></pre>
+
+        <h3>Tiers</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Price</th>
+              <th>Features</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Solo</td>
+              <td>$29 one-time</td>
+              <td>CLI, all patterns, refactor plans</td>
+            </tr>
+            <tr>
+              <td>Pro</td>
+              <td>$99/year</td>
+              <td>Solo + watch mode, desktop app</td>
+            </tr>
+            <tr>
+              <td>Team</td>
+              <td>$249/year</td>
+              <td>Pro + 5 seats, CI integration</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p><a href="/#pricing">View full pricing details</a></p>
+      </section>
+    </main>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-left">
+        <span class="logo">prune</span>
+        <span class="footer-copy">&copy; 2024 Prune Dev</span>
+      </div>
+      <div class="footer-links">
+        <a href="/docs">Docs</a>
+        <a href="https://github.com/prunecode/prune">GitHub</a>
+        <a href="mailto:hello@prune.dev">Contact</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

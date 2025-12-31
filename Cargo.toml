@@ -1,0 +1,63 @@
+[package]
+name = "prune"
+version = "0.1.0"
+edition = "2021"
+description = "Detect structural and semantic anti-patterns in codebases"
+license = "MIT"
+repository = "https://github.com/prunecode/prune"
+keywords = ["linter", "code-analysis", "refactoring", "ai", "developer-tools"]
+categories = ["development-tools", "command-line-utilities"]
+
+[dependencies]
+# CLI & TUI
+clap = { version = "4.4", features = ["derive", "env"] }
+ratatui = "0.28"
+crossterm = "0.28"
+arboard = "3.4"
+
+# Parsing
+tree-sitter = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.23"
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Async & File Watching
+tokio = { version = "1.40", features = ["full"] }
+notify = "7.0"
+notify-debouncer-mini = "0.5"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Utilities
+walkdir = "2.5"
+glob = "0.3"
+thiserror = "2.0"
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ignore = "0.4"
+similar = "2.6"
+dirs = "5.0"
+
+[[bin]]
+name = "prune"
+path = "src/main.rs"
+
+[lib]
+name = "prune_core"
+path = "src/lib.rs"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
