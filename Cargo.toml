@@ -1,5 +1,5 @@
 [package]
-name = "prune"
+name = "prunecode"
 version = "0.1.0"
 edition = "2021"
 description = "Detect structural and semantic anti-patterns in codebases"
