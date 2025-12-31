@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Detect structural and semantic anti-patterns in codebases"
 license = "MIT"
-repository = "https://github.com/prunecode/prune"
+repository = "https://github.com/dlabadini/prune"
 keywords = ["linter", "code-analysis", "refactoring", "ai", "developer-tools"]
 categories = ["development-tools", "command-line-utilities"]
 

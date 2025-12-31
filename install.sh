@@ -46,9 +46,9 @@ mkdir -p "$PRUNE_INSTALL_DIR"
 
 # Download binary
 if [ "$PRUNE_VERSION" = "latest" ]; then
-    DOWNLOAD_URL="https://github.com/prunecode/prune/releases/latest/download/${BINARY_NAME}.tar.gz"
+    DOWNLOAD_URL="https://github.com/dlabadini/prune/releases/latest/download/${BINARY_NAME}.tar.gz"
 else
-    DOWNLOAD_URL="https://github.com/prunecode/prune/releases/download/v${PRUNE_VERSION}/${BINARY_NAME}.tar.gz"
+    DOWNLOAD_URL="https://github.com/dlabadini/prune/releases/download/v${PRUNE_VERSION}/${BINARY_NAME}.tar.gz"
 fi
 
 echo "Downloading from $DOWNLOAD_URL..."
