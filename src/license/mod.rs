@@ -317,6 +317,32 @@ fn generate_trial_key(email: &str) -> String {
     )
 }
 
+/// Generate a license key for a specific tier (admin/owner use only)
+pub fn generate_license_key(tier: LicenseTier, identifier: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let tier_code = match tier {
+        LicenseTier::Trial => "TRIAL",
+        LicenseTier::Solo => "SOLO",
+        LicenseTier::Pro => "PRO",
+        LicenseTier::Team => "TEAM",
+        LicenseTier::Enterprise => "ENT",
+    };
+
+    let mut hasher = DefaultHasher::new();
+    identifier.hash(&mut hasher);
+    Utc::now().timestamp_nanos_opt().unwrap_or(0).hash(&mut hasher);
+    let hash = hasher.finish();
+
+    format!("PRUNE-{}-{:06X}-{:06X}-{:06X}",
+        tier_code,
+        (hash >> 48) as u32 & 0xFFFFFF,
+        (hash >> 24) as u32 & 0xFFFFFF,
+        hash as u32 & 0xFFFFFF
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

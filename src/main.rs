@@ -8,7 +8,7 @@ mod tui;
 
 use clap::Parser;
 use cli::{Cli, Commands, LicenseAction};
-use prune_core::{Analyzer, Config, LicenseManager, LicenseStatus, RefactorPlan};
+use prune_core::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan, generate_license_key};
 use std::io::{self};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -252,6 +252,32 @@ fn cmd_license(action: LicenseAction) -> io::Result<()> {
                     return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
                 }
             }
+        }
+        LicenseAction::Generate { tier, customer } => {
+            let license_tier = match tier.to_lowercase().as_str() {
+                "solo" => LicenseTier::Solo,
+                "pro" => LicenseTier::Pro,
+                "team" => LicenseTier::Team,
+                "enterprise" | "ent" => LicenseTier::Enterprise,
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Invalid tier. Use: solo, pro, team, or enterprise"
+                    ));
+                }
+            };
+
+            let key = generate_license_key(license_tier, &customer);
+            println!("Generated License Key");
+            println!("======================");
+            println!();
+            println!("Tier: {}", license_tier.display_name());
+            println!("Customer: {}", customer);
+            println!();
+            println!("Key: {}", key);
+            println!();
+            println!("Activate with:");
+            println!("  prune license activate {} --email {}", key, customer);
         }
     }
 

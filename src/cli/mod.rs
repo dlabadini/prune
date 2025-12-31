@@ -82,6 +82,18 @@ pub enum LicenseAction {
         #[arg(long, short)]
         email: String,
     },
+
+    /// Generate a license key (owner/admin only)
+    #[command(hide = true)]
+    Generate {
+        /// Tier: solo, pro, team, enterprise
+        #[arg(long, short)]
+        tier: String,
+
+        /// Customer identifier (email or company)
+        #[arg(long, short)]
+        customer: String,
+    },
 }
 
 impl Cli {

@@ -113,6 +113,8 @@ impl Database {
         }
 
         let conn = Connection::open(path)?;
+        // Enable foreign keys - must be done before any operations
+        conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
         let db = Self {
             conn,
             path: path.to_path_buf(),
