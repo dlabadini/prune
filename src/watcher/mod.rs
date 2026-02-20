@@ -40,10 +40,7 @@ impl FileWatcher {
     pub fn new(root: &Path, debounce_ms: u64) -> Result<Self, WatcherError> {
         let (tx, rx) = channel();
 
-        let debouncer = new_debouncer(
-            Duration::from_millis(debounce_ms),
-            tx,
-        )?;
+        let debouncer = new_debouncer(Duration::from_millis(debounce_ms), tx)?;
 
         Ok(Self {
             debouncer,
@@ -54,7 +51,8 @@ impl FileWatcher {
 
     /// Start watching the root directory
     pub fn start(&mut self) -> Result<(), WatcherError> {
-        self.debouncer.watcher()
+        self.debouncer
+            .watcher()
             .watch(&self.root, RecursiveMode::Recursive)
             .map_err(|e| WatcherError::WatchError(e.to_string()))?;
         Ok(())
@@ -62,7 +60,8 @@ impl FileWatcher {
 
     /// Stop watching
     pub fn stop(&mut self) -> Result<(), WatcherError> {
-        self.debouncer.watcher()
+        self.debouncer
+            .watcher()
             .unwatch(&self.root)
             .map_err(|e| WatcherError::WatchError(e.to_string()))?;
         Ok(())
@@ -88,7 +87,8 @@ impl FileWatcher {
 
     /// Process raw events into WatchEvents
     fn process_events(&self, events: Vec<DebouncedEvent>) -> Vec<WatchEvent> {
-        events.into_iter()
+        events
+            .into_iter()
             .filter_map(|event| {
                 let path = event.path;
 
@@ -103,8 +103,9 @@ impl FileWatcher {
                 }
 
                 Some(if path.exists() {
-                    if path.metadata().ok()?.created().ok()? >
-                       std::time::SystemTime::now() - Duration::from_secs(1) {
+                    if path.metadata().ok()?.created().ok()?
+                        > std::time::SystemTime::now() - Duration::from_secs(1)
+                    {
                         WatchEvent::Created(path)
                     } else {
                         WatchEvent::Modified(path)
@@ -122,11 +123,12 @@ fn is_source_file(path: &Path) -> bool {
         return false;
     }
 
-    let ext = path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-    matches!(ext, "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs")
+    matches!(
+        ext,
+        "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs"
+    )
 }
 
 fn is_ignored_path(path: &Path) -> bool {
@@ -134,7 +136,7 @@ fn is_ignored_path(path: &Path) -> bool {
 
     path_str.contains("node_modules")
         || path_str.contains(".git")
-        || path_str.contains(".keel")
+        || path_str.contains(".prune")
         || path_str.contains("dist")
         || path_str.contains("build")
         || path_str.contains(".next")
@@ -142,21 +144,11 @@ fn is_ignored_path(path: &Path) -> bool {
 }
 
 /// Watch mode state for the TUI
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WatchState {
     pub is_watching: bool,
     pub files_changed: Vec<PathBuf>,
     pub last_event_time: Option<std::time::Instant>,
-}
-
-impl Default for WatchState {
-    fn default() -> Self {
-        Self {
-            is_watching: false,
-            files_changed: Vec::new(),
-            last_event_time: None,
-        }
-    }
 }
 
 impl WatchState {

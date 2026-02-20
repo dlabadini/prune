@@ -34,13 +34,12 @@ impl PatternDetector for BarrelBloatDetector {
                     import_count, threshold
                 );
 
-                let rationale = format!(
-                    "Barrel files (index.ts) that re-export many modules can:\n\
+                let rationale = "Barrel files (index.ts) that re-export many modules can:\n\
                     - Cause unnecessary code to be bundled when any export is imported\n\
                     - Slow down TypeScript compilation and IDE responsiveness\n\
                     - Make it harder to tree-shake unused code\n\
                     - Hide the true dependency graph of your application"
-                );
+                    .to_string();
 
                 let suggested_fix = generate_fix_suggestion(&path, import_count);
 
@@ -123,7 +122,8 @@ fn generate_fix_suggestion(path: &str, import_count: usize) -> String {
    ```
 
 Currently re-exporting {} modules - consider reducing to <{} for better performance."#,
-        import_count, import_count / 2,
+        import_count,
+        import_count / 2,
         dir = dir,
         module = dir.rsplit('/').next().unwrap_or("module")
     )
@@ -136,9 +136,9 @@ mod tests {
     #[test]
     fn test_severity_calculation() {
         // ratio > 3.0 = High, ratio > 2.0 = Medium, else Low
-        assert_eq!(calculate_severity(80, 20), Severity::High);   // 4.0 > 3.0
+        assert_eq!(calculate_severity(80, 20), Severity::High); // 4.0 > 3.0
         assert_eq!(calculate_severity(60, 20), Severity::Medium); // 3.0 not > 3.0
         assert_eq!(calculate_severity(45, 20), Severity::Medium); // 2.25 > 2.0
-        assert_eq!(calculate_severity(25, 20), Severity::Low);    // 1.25 not > 2.0
+        assert_eq!(calculate_severity(25, 20), Severity::Low); // 1.25 not > 2.0
     }
 }

@@ -148,63 +148,63 @@ impl Config {
 
     /// Get effective threshold values based on strictness
     pub fn effective_interface_sprawl_similarity(&self) -> f32 {
-        self.thresholds.interface_sprawl_similarity.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .interface_sprawl_similarity
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 0.90,
                 Strictness::Default => 0.85,
                 Strictness::Strict => 0.80,
-            }
-        })
+            })
     }
 
     pub fn effective_interface_sprawl_min_cluster(&self) -> usize {
-        self.thresholds.interface_sprawl_min_cluster.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .interface_sprawl_min_cluster
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 4,
                 Strictness::Default => 3,
                 Strictness::Strict => 2,
-            }
-        })
+            })
     }
 
     pub fn effective_redundant_logic_similarity(&self) -> f32 {
-        self.thresholds.redundant_logic_similarity.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .redundant_logic_similarity
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 0.90,
                 Strictness::Default => 0.85,
                 Strictness::Strict => 0.80,
-            }
-        })
+            })
     }
 
     pub fn effective_god_file_max_exports(&self) -> usize {
-        self.thresholds.god_file_max_exports.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .god_file_max_exports
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 30,
                 Strictness::Default => 20,
                 Strictness::Strict => 15,
-            }
-        })
+            })
     }
 
     pub fn effective_god_file_max_lines(&self) -> usize {
-        self.thresholds.god_file_max_lines.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .god_file_max_lines
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 1000,
                 Strictness::Default => 500,
                 Strictness::Strict => 300,
-            }
-        })
+            })
     }
 
     pub fn effective_barrel_bloat_threshold(&self) -> usize {
-        self.thresholds.barrel_bloat_threshold.unwrap_or_else(|| {
-            match self.strictness {
+        self.thresholds
+            .barrel_bloat_threshold
+            .unwrap_or(match self.strictness {
                 Strictness::Relaxed => 30,
                 Strictness::Default => 20,
                 Strictness::Strict => 10,
-            }
-        })
+            })
     }
 
     /// Check if a pattern is enabled

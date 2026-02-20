@@ -62,10 +62,16 @@ impl PatternDetector for GodFileDetector {
 
                 let mut reasons = Vec::new();
                 if exceeds_exports {
-                    reasons.push(format!("{} exports (threshold: {})", export_count, effective_max_exports));
+                    reasons.push(format!(
+                        "{} exports (threshold: {})",
+                        export_count, effective_max_exports
+                    ));
                 }
                 if exceeds_lines {
-                    reasons.push(format!("{} lines (threshold: {})", line_count, effective_max_lines));
+                    reasons.push(format!(
+                        "{} lines (threshold: {})",
+                        line_count, effective_max_lines
+                    ));
                 }
 
                 let title = format!("God file: {}", extract_filename(&path));
@@ -74,11 +80,10 @@ impl PatternDetector for GodFileDetector {
                     reasons.join(", ")
                 );
 
-                let rationale = format!(
-                    "Large files with many exports become difficult to maintain, test, and understand. \
+                let rationale = "Large files with many exports become difficult to maintain, test, and understand. \
                     Changes to one part of the file can unexpectedly affect other parts. \
                     Consider splitting into focused modules by domain or feature."
-                );
+                    .to_string();
 
                 let suggested_fix = generate_fix_suggestion(&path, export_count, line_count);
 

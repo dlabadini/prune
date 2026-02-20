@@ -1,18 +1,18 @@
 //! Codebase analyzer using tree-sitter for parsing
 
-mod parser;
 mod indexer;
+mod parser;
 
-pub use parser::Parser;
 pub use indexer::Indexer;
+pub use parser::Parser;
 
 use crate::config::Config;
 use crate::db::Database;
-use crate::patterns::{Finding, run_all_detectors};
-use std::path::{Path, PathBuf};
-use thiserror::Error;
+use crate::patterns::{run_all_detectors, Finding};
 use ignore::WalkBuilder;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AnalyzerError {
@@ -170,9 +170,7 @@ impl Analyzer {
             }
 
             // Check file extension
-            let ext = path.extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
             if !is_supported_extension(ext) {
                 continue;
@@ -207,9 +205,7 @@ impl Analyzer {
         self.db.clear_file_symbols(file_id)?;
 
         // Parse and extract symbols
-        let ext = file_path.extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         let symbols = self.indexer.parse_file(content, ext)?;
 
@@ -267,7 +263,10 @@ impl Analyzer {
     fn is_excluded(&self, rel_path: &str) -> bool {
         // Check include patterns first (they override exclude)
         if !self.config.include.is_empty() {
-            let included = self.config.include.iter()
+            let included = self
+                .config
+                .include
+                .iter()
                 .any(|pattern| glob_match(pattern, rel_path));
             if !included {
                 return true;
@@ -275,7 +274,9 @@ impl Analyzer {
         }
 
         // Check exclude patterns
-        self.config.exclude.iter()
+        self.config
+            .exclude
+            .iter()
             .any(|pattern| glob_match(pattern, rel_path))
     }
 
@@ -286,7 +287,10 @@ impl Analyzer {
 }
 
 fn is_supported_extension(ext: &str) -> bool {
-    matches!(ext, "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs")
+    matches!(
+        ext,
+        "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs"
+    )
 }
 
 fn calculate_hash(content: &str) -> String {

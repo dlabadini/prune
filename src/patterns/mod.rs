@@ -1,23 +1,23 @@
 //! Pattern detection for anti-patterns in codebases
 
-mod interface_sprawl;
-mod god_file;
 mod barrel_bloat;
 mod dead_exports;
-mod redundant_logic;
+mod god_file;
+mod interface_sprawl;
 mod over_abstraction;
+mod redundant_logic;
 
-pub use interface_sprawl::InterfaceSprawlDetector;
-pub use god_file::GodFileDetector;
 pub use barrel_bloat::BarrelBloatDetector;
 pub use dead_exports::DeadExportsDetector;
-pub use redundant_logic::RedundantLogicDetector;
+pub use god_file::GodFileDetector;
+pub use interface_sprawl::InterfaceSprawlDetector;
 pub use over_abstraction::OverAbstractionDetector;
+pub use redundant_logic::RedundantLogicDetector;
 
 use crate::config::Config;
 use crate::db::Database;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Severity level for findings
@@ -120,7 +120,9 @@ impl PatternType {
     pub fn description(&self) -> &'static str {
         match self {
             PatternType::InterfaceSprawl => "Multiple inline types representing the same concept",
-            PatternType::RedundantLogic => "Semantically similar code blocks that could be consolidated",
+            PatternType::RedundantLogic => {
+                "Semantically similar code blocks that could be consolidated"
+            }
             PatternType::GodFile => "File with too many exports or excessive complexity",
             PatternType::BarrelBloat => "Index file re-exporting too many modules",
             PatternType::DeadExports => "Exported symbols with no internal consumers",
@@ -179,7 +181,11 @@ impl Finding {
     ) -> Self {
         let now = Utc::now();
         Self {
-            id: format!("{}-{}", pattern_type.as_str(), Uuid::new_v4().to_string()[..8].to_string()),
+            id: format!(
+                "{}-{}",
+                pattern_type.as_str(),
+                &Uuid::new_v4().to_string()[..8]
+            ),
             pattern_type,
             severity,
             confidence,
@@ -260,8 +266,11 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
 
     // Sort by severity (highest first), then by confidence
     all_findings.sort_by(|a, b| {
-        b.severity.cmp(&a.severity)
-            .then_with(|| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal))
+        b.severity.cmp(&a.severity).then_with(|| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
     });
 
     all_findings

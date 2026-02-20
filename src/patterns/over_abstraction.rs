@@ -66,7 +66,8 @@ impl PatternDetector for OverAbstractionDetector {
 
 fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Option<Finding> {
     let source = &func.source_text;
-    let lines: Vec<_> = source.lines()
+    let lines: Vec<_> = source
+        .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("/*"))
         .collect();
@@ -80,8 +81,15 @@ fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Op
     }
 
     // Check if body is just a function call
-    let body_lines: Vec<_> = lines.iter()
-        .filter(|l| !l.contains("function") && !l.starts_with("export") && **l != "{" && **l != "}" && **l != "};")
+    let body_lines: Vec<_> = lines
+        .iter()
+        .filter(|l| {
+            !l.contains("function")
+                && !l.starts_with("export")
+                && **l != "{"
+                && **l != "}"
+                && **l != "};"
+        })
         .collect();
 
     if body_lines.len() != 1 {
@@ -91,8 +99,8 @@ fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Op
     let body_line = body_lines[0];
 
     // Check for simple delegation patterns
-    let is_delegation = body_line.starts_with("return ")
-        && (body_line.contains("(") || body_line.ends_with(";"));
+    let is_delegation =
+        body_line.starts_with("return ") && (body_line.contains("(") || body_line.ends_with(";"));
 
     // Check for arrow function wrappers
     let is_arrow_wrapper = body_line.contains("=>") && body_line.contains("(");
@@ -117,16 +125,12 @@ fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Op
         - Extra stack frames and function call overhead\n\
         - More code to read and understand\n\
         - Changes require updating multiple places\n\
-        - Makes stack traces harder to read"
+        - Makes stack traces harder to read",
     );
 
-    let location = Location::new(
-        file_path.to_string(),
-        func.start_line,
-        func.end_line,
-    )
-    .with_snippet(func.source_text.clone())
-    .with_context(format!("Wraps: {}", called_func.as_deref().unwrap_or("?")));
+    let location = Location::new(file_path.to_string(), func.start_line, func.end_line)
+        .with_snippet(func.source_text.clone())
+        .with_context(format!("Wraps: {}", called_func.as_deref().unwrap_or("?")));
 
     let suggested_fix = format!(
         r#"1. **Evaluate if wrapper is needed**:
@@ -199,7 +203,8 @@ fn detect_single_impl_interface(
     // Look for classes that might implement this interface
     // Common patterns: class FooImpl implements Foo, class FooService implements IFoo
 
-    let potential_impls: Vec<_> = classes.iter()
+    let potential_impls: Vec<_> = classes
+        .iter()
         .filter(|cls| {
             let cls_source = cls.source_text.to_lowercase();
             let iface_lower = interface_name.to_lowercase();
@@ -240,14 +245,22 @@ fn detect_single_impl_interface(
         - Premature abstraction (YAGNI violation)\n\
         - Over-engineering for 'flexibility' that never materializes\n\
         - Extra cognitive overhead for readers\n\
-        - More files to navigate and maintain"
+        - More files to navigate and maintain",
     );
 
     let locations = vec![
-        Location::new(interface_path.clone(), interface.start_line, interface.end_line)
-            .with_context(format!("Interface: {}", interface_name)),
-        Location::new(impl_path.clone(), impl_class.start_line, impl_class.end_line)
-            .with_context(format!("Only implementation: {}", impl_class.name)),
+        Location::new(
+            interface_path.clone(),
+            interface.start_line,
+            interface.end_line,
+        )
+        .with_context(format!("Interface: {}", interface_name)),
+        Location::new(
+            impl_path.clone(),
+            impl_class.start_line,
+            impl_class.end_line,
+        )
+        .with_context(format!("Only implementation: {}", impl_class.name)),
     ];
 
     let suggested_fix = format!(
@@ -271,17 +284,19 @@ fn detect_single_impl_interface(
         interface_name, impl_class.name
     );
 
-    Some(Finding::new(
-        PatternType::OverAbstraction,
-        Severity::Low,
-        0.65,
-        title,
-        description,
+    Some(
+        Finding::new(
+            PatternType::OverAbstraction,
+            Severity::Low,
+            0.65,
+            title,
+            description,
+        )
+        .with_rationale(rationale)
+        .with_locations(locations)
+        .with_suggested_fix(suggested_fix)
+        .with_related_concepts(vec![interface_name.clone(), impl_class.name.clone()]),
     )
-    .with_rationale(rationale)
-    .with_locations(locations)
-    .with_suggested_fix(suggested_fix)
-    .with_related_concepts(vec![interface_name.clone(), impl_class.name.clone()]))
 }
 
 #[cfg(test)]
@@ -290,8 +305,17 @@ mod tests {
 
     #[test]
     fn test_extract_called_function() {
-        assert_eq!(extract_called_function("return foo(args)"), Some("foo".to_string()));
-        assert_eq!(extract_called_function("return this.bar(x, y)"), Some("bar".to_string()));
-        assert_eq!(extract_called_function("() => baz()"), Some("baz".to_string()));
+        assert_eq!(
+            extract_called_function("return foo(args)"),
+            Some("foo".to_string())
+        );
+        assert_eq!(
+            extract_called_function("return this.bar(x, y)"),
+            Some("bar".to_string())
+        );
+        assert_eq!(
+            extract_called_function("() => baz()"),
+            Some("baz".to_string())
+        );
     }
 }

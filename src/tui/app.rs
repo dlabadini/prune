@@ -1,11 +1,11 @@
 //! TUI Application state and logic
 
+use arboard::Clipboard;
 use prune_core::analyzer::{Analyzer, AnalyzerError, ScanResult};
 use prune_core::config::Strictness;
 use prune_core::patterns::{Finding, PatternType};
 use prune_core::plan::RefactorPlan;
 use prune_core::watcher::{FileWatcher, WatchEvent, WatchState};
-use arboard::Clipboard;
 use std::path::{Path, PathBuf};
 
 /// Application state enum
@@ -27,11 +27,21 @@ impl FindingFilter {
     pub fn cycle(self) -> Self {
         match self {
             FindingFilter::All => FindingFilter::Pattern(PatternType::InterfaceSprawl),
-            FindingFilter::Pattern(PatternType::InterfaceSprawl) => FindingFilter::Pattern(PatternType::RedundantLogic),
-            FindingFilter::Pattern(PatternType::RedundantLogic) => FindingFilter::Pattern(PatternType::GodFile),
-            FindingFilter::Pattern(PatternType::GodFile) => FindingFilter::Pattern(PatternType::BarrelBloat),
-            FindingFilter::Pattern(PatternType::BarrelBloat) => FindingFilter::Pattern(PatternType::DeadExports),
-            FindingFilter::Pattern(PatternType::DeadExports) => FindingFilter::Pattern(PatternType::OverAbstraction),
+            FindingFilter::Pattern(PatternType::InterfaceSprawl) => {
+                FindingFilter::Pattern(PatternType::RedundantLogic)
+            }
+            FindingFilter::Pattern(PatternType::RedundantLogic) => {
+                FindingFilter::Pattern(PatternType::GodFile)
+            }
+            FindingFilter::Pattern(PatternType::GodFile) => {
+                FindingFilter::Pattern(PatternType::BarrelBloat)
+            }
+            FindingFilter::Pattern(PatternType::BarrelBloat) => {
+                FindingFilter::Pattern(PatternType::DeadExports)
+            }
+            FindingFilter::Pattern(PatternType::DeadExports) => {
+                FindingFilter::Pattern(PatternType::OverAbstraction)
+            }
             FindingFilter::Pattern(PatternType::OverAbstraction) => FindingFilter::All,
         }
     }
@@ -122,7 +132,8 @@ impl App {
 
     /// Apply current filter to findings
     fn apply_filter(&mut self) {
-        self.filtered_findings = self.findings
+        self.filtered_findings = self
+            .findings
             .iter()
             .enumerate()
             .filter(|(_, f)| match self.filter {
@@ -140,7 +151,8 @@ impl App {
 
     /// Get the currently selected finding
     pub fn selected_finding(&self) -> Option<&Finding> {
-        self.filtered_findings.get(self.selected_index)
+        self.filtered_findings
+            .get(self.selected_index)
             .and_then(|&idx| self.findings.get(idx))
     }
 

@@ -7,7 +7,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
+    widgets::{
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
     Frame,
 };
 
@@ -24,9 +27,9 @@ fn draw_list_view(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(0),     // Findings list
-            Constraint::Length(3),  // Status bar
+            Constraint::Length(3), // Header
+            Constraint::Min(0),    // Findings list
+            Constraint::Length(3), // Status bar
         ])
         .split(f.area());
 
@@ -36,23 +39,35 @@ fn draw_list_view(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let stats = app.last_scan.as_ref().map(|s| {
-        format!(
-            "{} files | {} symbols | {} issues",
-            s.files_scanned, s.symbols_found, app.findings.len()
-        )
-    }).unwrap_or_else(|| "Not scanned".to_string());
+    let stats = app
+        .last_scan
+        .as_ref()
+        .map(|s| {
+            format!(
+                "{} files | {} symbols | {} issues",
+                s.files_scanned,
+                s.symbols_found,
+                app.findings.len()
+            )
+        })
+        .unwrap_or_else(|| "Not scanned".to_string());
 
-    let header_text = vec![
-        Line::from(vec![
-            Span::styled(" Prune ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::raw(" "),
-            Span::styled(stats, Style::default().fg(Color::Gray)),
-        ]),
-    ];
+    let header_text = vec![Line::from(vec![
+        Span::styled(
+            " Prune ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(stats, Style::default().fg(Color::Gray)),
+    ])];
 
-    let header = Paragraph::new(header_text)
-        .block(Block::default().borders(Borders::BOTTOM).border_style(Style::default().fg(Color::DarkGray)));
+    let header = Paragraph::new(header_text).block(
+        Block::default()
+            .borders(Borders::BOTTOM)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
 
     f.render_widget(header, area);
 }
@@ -73,7 +88,8 @@ fn draw_findings_list(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
-    let items: Vec<ListItem> = app.filtered_findings
+    let items: Vec<ListItem> = app
+        .filtered_findings
         .iter()
         .enumerate()
         .map(|(i, &idx)| {
@@ -121,15 +137,17 @@ fn draw_findings_list(f: &mut Frame, app: &App, area: Rect) {
         app.filter.display_name()
     );
 
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title(title));
+    let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
 
     f.render_widget(list, area);
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let watch_status = if app.watch_state.is_watching {
-        Span::styled(" WATCHING ", Style::default().fg(Color::Black).bg(Color::Green))
+        Span::styled(
+            " WATCHING ",
+            Style::default().fg(Color::Black).bg(Color::Green),
+        )
     } else {
         Span::styled(" STATIC ", Style::default().fg(Color::Gray))
     };
@@ -149,8 +167,11 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
 
     let line = Line::from(vec![watch_status, strictness, Span::raw(" "), status_span]);
 
-    let status_bar = Paragraph::new(vec![line, Line::from(shortcuts)])
-        .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::DarkGray)));
+    let status_bar = Paragraph::new(vec![line, Line::from(shortcuts)]).block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
 
     f.render_widget(status_bar, area);
 }
@@ -159,9 +180,9 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(0),     // Detail content
-            Constraint::Length(2),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(0),    // Detail content
+            Constraint::Length(2), // Footer
         ])
         .split(f.area());
 
@@ -171,10 +192,15 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
             Span::styled(" ", Style::default()),
             Span::styled(
                 finding.pattern_type.display_name(),
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(": "),
-            Span::styled(&finding.title, Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                &finding.title,
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
         ]))
         .block(Block::default().borders(Borders::BOTTOM));
 
@@ -191,11 +217,24 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
             .map(|line: &str| {
                 // Syntax highlighting for markdown
                 if line.starts_with("# ") {
-                    Line::from(Span::styled(line, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
+                    Line::from(Span::styled(
+                        line,
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ))
                 } else if line.starts_with("## ") {
-                    Line::from(Span::styled(line, Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
+                    Line::from(Span::styled(
+                        line,
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ))
                 } else if line.starts_with("**") && line.ends_with("**") {
-                    Line::from(Span::styled(line, Style::default().add_modifier(Modifier::BOLD)))
+                    Line::from(Span::styled(
+                        line,
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ))
                 } else if line.starts_with("- [ ]") {
                     Line::from(Span::styled(line, Style::default().fg(Color::Magenta)))
                 } else if line.starts_with("```") {
@@ -212,7 +251,11 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
         let visible_lines = chunks[1].height as usize;
 
         let content = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title(" Refactor Plan "))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Refactor Plan "),
+            )
             .wrap(Wrap { trim: false });
 
         f.render_widget(content, chunks[1]);
@@ -220,17 +263,21 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
         // Scrollbar
         if total_lines > visible_lines {
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight);
-            let mut scrollbar_state = ScrollbarState::new(total_lines)
-                .position(app.detail_scroll);
+            let mut scrollbar_state = ScrollbarState::new(total_lines).position(app.detail_scroll);
             f.render_stateful_widget(scrollbar, chunks[1], &mut scrollbar_state);
         }
     }
 
     // Footer
-    let footer = Paragraph::new(Line::from(vec![
-        Span::styled(" Esc:back  j/k:scroll  c:copy  p:save ", Style::default().fg(Color::DarkGray)),
-    ]))
-    .block(Block::default().borders(Borders::TOP).border_style(Style::default().fg(Color::DarkGray)));
+    let footer = Paragraph::new(Line::from(vec![Span::styled(
+        " Esc:back  j/k:scroll  c:copy  p:save ",
+        Style::default().fg(Color::DarkGray),
+    )]))
+    .block(
+        Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
 
     f.render_widget(footer, chunks[2]);
 }
@@ -252,14 +299,20 @@ fn draw_help_overlay(f: &mut Frame, app: &App) {
 
     let help_text = vec![
         Line::from(""),
-        Line::from(Span::styled("  Navigation", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "  Navigation",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
         Line::from("  j/↓        Next finding"),
         Line::from("  k/↑        Previous finding"),
         Line::from("  g/Home     First finding"),
         Line::from("  G/End      Last finding"),
         Line::from("  Enter      View detail"),
         Line::from(""),
-        Line::from(Span::styled("  Actions", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "  Actions",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
         Line::from("  c          Copy plan to clipboard"),
         Line::from("  p          Save plan to REFACTOR_PLAN.md"),
         Line::from("  w          Toggle watch mode"),
@@ -267,16 +320,21 @@ fn draw_help_overlay(f: &mut Frame, app: &App) {
         Line::from("  f          Cycle filter by pattern"),
         Line::from("  r          Rescan codebase"),
         Line::from(""),
-        Line::from(Span::styled("  General", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "  General",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
         Line::from("  ?          Toggle this help"),
         Line::from("  q/Esc      Quit / Back"),
     ];
 
     let help = Paragraph::new(help_text)
-        .block(Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .title(" Help "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Help "),
+        )
         .style(Style::default().bg(Color::Black));
 
     f.render_widget(help, overlay_area);

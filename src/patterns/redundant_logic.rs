@@ -42,22 +42,23 @@ impl PatternDetector for RedundantLogicDetector {
             };
 
             // Skip if in same file and adjacent (might be intentional overloads)
-            if a.file_id == b.file_id && (a.end_line + 5 >= b.start_line || b.end_line + 5 >= a.start_line) {
+            if a.file_id == b.file_id
+                && (a.end_line + 5 >= b.start_line || b.end_line + 5 >= a.start_line)
+            {
                 continue;
             }
 
             let severity = calculate_severity(similarity, a.file_id != b.file_id);
             let confidence = similarity;
 
-            let title = format!(
-                "Similar functions: {} and {}",
-                a.name, b.name
-            );
+            let title = format!("Similar functions: {} and {}", a.name, b.name);
 
             let description = format!(
                 "`{}` and `{}` have {:.0}% structural similarity. \
                 This may indicate duplicated logic that could be consolidated.",
-                a.name, b.name, similarity * 100.0
+                a.name,
+                b.name,
+                similarity * 100.0
             );
 
             let rationale = String::from(
@@ -65,7 +66,7 @@ impl PatternDetector for RedundantLogicDetector {
                 - Bug fixes needing to be applied in multiple places\n\
                 - Inconsistencies when one copy is updated but not the other\n\
                 - Increased maintenance burden\n\
-                - Confusion about which version to use or modify"
+                - Confusion about which version to use or modify",
             );
 
             let locations = vec![
@@ -196,11 +197,21 @@ fn truncate_snippet(source: &str, max_lines: usize) -> String {
         source.to_string()
     } else {
         let truncated: Vec<&str> = lines.iter().take(max_lines).copied().collect();
-        format!("{}\n// ... {} more lines", truncated.join("\n"), lines.len() - max_lines)
+        format!(
+            "{}\n// ... {} more lines",
+            truncated.join("\n"),
+            lines.len() - max_lines
+        )
     }
 }
 
-fn generate_fix_suggestion(a: &Symbol, b: &Symbol, a_path: &str, b_path: &str, similarity: f32) -> String {
+fn generate_fix_suggestion(
+    a: &Symbol,
+    b: &Symbol,
+    a_path: &str,
+    b_path: &str,
+    similarity: f32,
+) -> String {
     let _same_file = a_path == b_path;
 
     if similarity > 0.95 {
@@ -222,8 +233,10 @@ Functions:
 - `{}` in `{}`
 - `{}` in `{}`"#,
             similarity * 100.0,
-            a.name, extract_filename(a_path),
-            b.name, extract_filename(b_path)
+            a.name,
+            extract_filename(a_path),
+            b.name,
+            extract_filename(b_path)
         )
     } else {
         format!(
@@ -254,8 +267,12 @@ Functions to review:
 - `{}` ({} lines) in `{}`"#,
             similarity * 100.0,
             infer_consolidated_name(&a.name, &b.name),
-            a.name, a.source_text.lines().count(), extract_filename(a_path),
-            b.name, b.source_text.lines().count(), extract_filename(b_path)
+            a.name,
+            a.source_text.lines().count(),
+            extract_filename(a_path),
+            b.name,
+            b.source_text.lines().count(),
+            extract_filename(b_path)
         )
     }
 }
@@ -269,7 +286,8 @@ fn infer_consolidated_name(a: &str, b: &str) -> String {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
 
-    let common_len = a_chars.iter()
+    let common_len = a_chars
+        .iter()
         .zip(b_chars.iter())
         .take_while(|(a, b)| a == b)
         .count();
@@ -278,7 +296,11 @@ fn infer_consolidated_name(a: &str, b: &str) -> String {
         a_chars[..common_len].iter().collect()
     } else {
         // Use the shorter name
-        if a.len() < b.len() { a.to_string() } else { b.to_string() }
+        if a.len() < b.len() {
+            a.to_string()
+        } else {
+            b.to_string()
+        }
     }
 }
 
@@ -288,7 +310,10 @@ mod tests {
 
     #[test]
     fn test_infer_consolidated_name() {
-        assert_eq!(infer_consolidated_name("getUserById", "getUserByEmail"), "getUserBy");
+        assert_eq!(
+            infer_consolidated_name("getUserById", "getUserByEmail"),
+            "getUserBy"
+        );
         assert_eq!(infer_consolidated_name("fetch", "get"), "get");
     }
 

@@ -16,12 +16,20 @@ impl Indexer {
     }
 
     /// Parse a file and extract symbols
-    pub fn parse_file(&mut self, content: &str, extension: &str) -> Result<Vec<ParsedSymbol>, AnalyzerError> {
+    pub fn parse_file(
+        &mut self,
+        content: &str,
+        extension: &str,
+    ) -> Result<Vec<ParsedSymbol>, AnalyzerError> {
         Ok(self.parser.parse_symbols(content, extension))
     }
 
     /// Parse a file and extract imports
-    pub fn parse_imports(&mut self, content: &str, extension: &str) -> Result<Vec<ParsedImport>, AnalyzerError> {
+    pub fn parse_imports(
+        &mut self,
+        content: &str,
+        extension: &str,
+    ) -> Result<Vec<ParsedImport>, AnalyzerError> {
         Ok(self.parser.parse_imports(content, extension))
     }
 }

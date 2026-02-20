@@ -1,7 +1,7 @@
 //! Tree-sitter based parser for TypeScript/JavaScript
 
-use tree_sitter::{Language, Parser as TsParser, Node, Tree};
 use crate::db::SymbolKind;
+use tree_sitter::{Language, Node, Parser as TsParser, Tree};
 
 /// Parsed symbol from source code
 #[derive(Debug, Clone)]
@@ -45,7 +45,9 @@ impl Parser {
     /// Parse source code and extract symbols
     pub fn parse_symbols(&mut self, source: &str, extension: &str) -> Vec<ParsedSymbol> {
         let language = self.get_language(extension);
-        self.ts_parser.set_language(&language).expect("Error setting language");
+        self.ts_parser
+            .set_language(&language)
+            .expect("Error setting language");
 
         let tree = match self.ts_parser.parse(source, None) {
             Some(tree) => tree,
@@ -60,7 +62,9 @@ impl Parser {
     /// Parse source code and extract imports
     pub fn parse_imports(&mut self, source: &str, extension: &str) -> Vec<ParsedImport> {
         let language = self.get_language(extension);
-        self.ts_parser.set_language(&language).expect("Error setting language");
+        self.ts_parser
+            .set_language(&language)
+            .expect("Error setting language");
 
         let tree = match self.ts_parser.parse(source, None) {
             Some(tree) => tree,
@@ -84,7 +88,13 @@ impl Parser {
         self.visit_node(root, source, symbols, false);
     }
 
-    fn visit_node(&self, node: Node, source: &str, symbols: &mut Vec<ParsedSymbol>, is_exported: bool) {
+    fn visit_node(
+        &self,
+        node: Node,
+        source: &str,
+        symbols: &mut Vec<ParsedSymbol>,
+        is_exported: bool,
+    ) {
         let kind = node.kind();
 
         // Check for export statements
@@ -119,7 +129,8 @@ impl Parser {
                                 start_line: parent.start_position().row + 1,
                                 end_line: node.end_position().row + 1,
                                 is_exported: exported,
-                                source_text: self.get_node_text(&parent.parent().unwrap_or(parent), source),
+                                source_text: self
+                                    .get_node_text(&parent.parent().unwrap_or(parent), source),
                             });
                         }
                     }
@@ -183,7 +194,10 @@ impl Parser {
                                     let name = self.get_node_text(&name_node, source);
                                     // Skip if this is an arrow function (handled above)
                                     let is_function = child.named_child_count() > 1
-                                        && child.named_child(1).map(|n| n.kind() == "arrow_function").unwrap_or(false);
+                                        && child
+                                            .named_child(1)
+                                            .map(|n| n.kind() == "arrow_function")
+                                            .unwrap_or(false);
 
                                     if !is_function {
                                         symbols.push(ParsedSymbol {
@@ -252,7 +266,8 @@ impl Parser {
                                 if let Some(spec) = child.named_child(j) {
                                     if spec.kind() == "export_specifier" {
                                         if let Some(name_node) = spec.child_by_field_name("name") {
-                                            imported_names.push(self.get_node_text(&name_node, source));
+                                            imported_names
+                                                .push(self.get_node_text(&name_node, source));
                                         }
                                     }
                                 }
@@ -298,38 +313,44 @@ impl Parser {
         // Get imported names
         for i in 0..node.named_child_count() {
             if let Some(child) = node.named_child(i) {
-                match child.kind() {
-                    "import_clause" => {
-                        // Handle default import and named imports
-                        for j in 0..child.named_child_count() {
-                            if let Some(import_child) = child.named_child(j) {
-                                match import_child.kind() {
-                                    "identifier" => {
-                                        imported_names.push(self.get_node_text(&import_child, source));
-                                    }
-                                    "named_imports" => {
-                                        for k in 0..import_child.named_child_count() {
-                                            if let Some(spec) = import_child.named_child(k) {
-                                                if spec.kind() == "import_specifier" {
-                                                    if let Some(name_node) = spec.child_by_field_name("name") {
-                                                        imported_names.push(self.get_node_text(&name_node, source));
-                                                    }
+                if child.kind() == "import_clause" {
+                    // Handle default import and named imports
+                    for j in 0..child.named_child_count() {
+                        if let Some(import_child) = child.named_child(j) {
+                            match import_child.kind() {
+                                "identifier" => {
+                                    imported_names.push(self.get_node_text(&import_child, source));
+                                }
+                                "named_imports" => {
+                                    for k in 0..import_child.named_child_count() {
+                                        if let Some(spec) = import_child.named_child(k) {
+                                            if spec.kind() == "import_specifier" {
+                                                if let Some(name_node) =
+                                                    spec.child_by_field_name("name")
+                                                {
+                                                    imported_names.push(
+                                                        self.get_node_text(&name_node, source),
+                                                    );
                                                 }
                                             }
                                         }
                                     }
-                                    "namespace_import" => {
-                                        // import * as name
-                                        if let Some(name_node) = import_child.child_by_field_name("name") {
-                                            imported_names.push(format!("* as {}", self.get_node_text(&name_node, source)));
-                                        }
-                                    }
-                                    _ => {}
                                 }
+                                "namespace_import" => {
+                                    // import * as name
+                                    if let Some(name_node) =
+                                        import_child.child_by_field_name("name")
+                                    {
+                                        imported_names.push(format!(
+                                            "* as {}",
+                                            self.get_node_text(&name_node, source)
+                                        ));
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }
-                    _ => {}
                 }
             }
         }
@@ -359,7 +380,8 @@ impl Parser {
     fn get_string_value(&self, node: &Node, source: &str) -> String {
         let text = self.get_node_text(node, source);
         // Remove quotes
-        text.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string()
+        text.trim_matches(|c| c == '"' || c == '\'' || c == '`')
+            .to_string()
     }
 }
 

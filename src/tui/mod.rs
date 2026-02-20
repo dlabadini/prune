@@ -6,12 +6,12 @@ mod ui;
 pub use app::{App, AppState};
 pub use ui::draw;
 
-use prune_core::watcher::WatchEvent;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use prune_core::watcher::WatchEvent;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::path::Path;
@@ -33,7 +33,7 @@ pub fn run(root: &Path) -> io::Result<()> {
             // Restore terminal before panicking
             disable_raw_mode()?;
             execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
-            return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+            return Err(io::Error::other(e.to_string()));
         }
     };
 
@@ -55,10 +55,7 @@ pub fn run(root: &Path) -> io::Result<()> {
     result
 }
 
-fn run_app(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-) -> io::Result<()> {
+fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
     loop {
         terminal.draw(|f| draw(f, app))?;
 

@@ -1,10 +1,10 @@
-//! Database storage for Keel using SQLite
+//! Database storage for Prune using SQLite
 
-use rusqlite::{Connection, params};
+use chrono::{DateTime, Utc};
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 
 #[derive(Error, Debug)]
 pub enum DbError {
@@ -51,6 +51,7 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "function" => Some(SymbolKind::Function),
@@ -97,7 +98,7 @@ pub struct Reference {
     pub line: usize,
 }
 
-/// Database handle for Keel
+/// Database handle for Prune
 pub struct Database {
     conn: Connection,
     #[allow(dead_code)]
@@ -123,11 +124,11 @@ impl Database {
         Ok(db)
     }
 
-    /// Open database in the .keel directory of a project
+    /// Open database in the .prune directory of a project
     pub fn open_for_project(project_root: &Path) -> Result<Self, DbError> {
-        let keel_dir = project_root.join(".keel");
-        std::fs::create_dir_all(&keel_dir)?;
-        let db_path = keel_dir.join("index.db");
+        let prune_dir = project_root.join(".prune");
+        std::fs::create_dir_all(&prune_dir)?;
+        let db_path = prune_dir.join("index.db");
         Self::open(&db_path)
     }
 
@@ -234,7 +235,9 @@ impl Database {
 
     /// Get file hash by path (for change detection)
     pub fn get_file_hash(&self, path: &str) -> Result<Option<String>, DbError> {
-        let mut stmt = self.conn.prepare("SELECT hash FROM files WHERE path = ?1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT hash FROM files WHERE path = ?1")?;
         let result = stmt.query_row(params![path], |row| row.get(0));
         match result {
             Ok(hash) => Ok(Some(hash)),
@@ -245,18 +248,24 @@ impl Database {
 
     /// Delete file and all related data
     pub fn delete_file(&self, path: &str) -> Result<(), DbError> {
-        self.conn.execute("DELETE FROM files WHERE path = ?1", params![path])?;
+        self.conn
+            .execute("DELETE FROM files WHERE path = ?1", params![path])?;
         Ok(())
     }
 
     /// Clear all symbols for a file (before re-indexing)
     pub fn clear_file_symbols(&self, file_id: i64) -> Result<(), DbError> {
-        self.conn.execute("DELETE FROM symbols WHERE file_id = ?1", params![file_id])?;
-        self.conn.execute("DELETE FROM imports WHERE source_file_id = ?1", params![file_id])?;
+        self.conn
+            .execute("DELETE FROM symbols WHERE file_id = ?1", params![file_id])?;
+        self.conn.execute(
+            "DELETE FROM imports WHERE source_file_id = ?1",
+            params![file_id],
+        )?;
         Ok(())
     }
 
     /// Insert a symbol
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_symbol(
         &self,
         file_id: i64,
@@ -307,19 +316,21 @@ impl Database {
             "#,
         )?;
 
-        let symbols = stmt.query_map([], |row| {
-            Ok(Symbol {
-                id: row.get(0)?,
-                file_id: row.get(1)?,
-                name: row.get(2)?,
-                kind: SymbolKind::from_str(&row.get::<_, String>(3)?).unwrap_or(SymbolKind::Variable),
-                start_line: row.get(4)?,
-                end_line: row.get(5)?,
-                is_exported: row.get(6)?,
-                source_text: row.get(7)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let symbols = stmt
+            .query_map([], |row| {
+                Ok(Symbol {
+                    id: row.get(0)?,
+                    file_id: row.get(1)?,
+                    name: row.get(2)?,
+                    kind: SymbolKind::from_str(&row.get::<_, String>(3)?)
+                        .unwrap_or(SymbolKind::Variable),
+                    start_line: row.get(4)?,
+                    end_line: row.get(5)?,
+                    is_exported: row.get(6)?,
+                    source_text: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(symbols)
     }
@@ -334,44 +345,46 @@ impl Database {
             "#,
         )?;
 
-        let symbols = stmt.query_map(params![kind.as_str()], |row| {
-            Ok(Symbol {
-                id: row.get(0)?,
-                file_id: row.get(1)?,
-                name: row.get(2)?,
-                kind,
-                start_line: row.get(4)?,
-                end_line: row.get(5)?,
-                is_exported: row.get(6)?,
-                source_text: row.get(7)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let symbols = stmt
+            .query_map(params![kind.as_str()], |row| {
+                Ok(Symbol {
+                    id: row.get(0)?,
+                    file_id: row.get(1)?,
+                    name: row.get(2)?,
+                    kind,
+                    start_line: row.get(4)?,
+                    end_line: row.get(5)?,
+                    is_exported: row.get(6)?,
+                    source_text: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(symbols)
     }
 
     /// Get all files
     pub fn get_all_files(&self) -> Result<Vec<SourceFile>, DbError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, path, hash, line_count, last_indexed FROM files"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, path, hash, line_count, last_indexed FROM files")?;
 
-        let files = stmt.query_map([], |row| {
-            let last_indexed_str: String = row.get(4)?;
-            let last_indexed = DateTime::parse_from_rfc3339(&last_indexed_str)
-                .map(|dt| dt.with_timezone(&Utc))
-                .unwrap_or_else(|_| Utc::now());
+        let files = stmt
+            .query_map([], |row| {
+                let last_indexed_str: String = row.get(4)?;
+                let last_indexed = DateTime::parse_from_rfc3339(&last_indexed_str)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .unwrap_or_else(|_| Utc::now());
 
-            Ok(SourceFile {
-                id: row.get(0)?,
-                path: row.get(1)?,
-                hash: row.get(2)?,
-                line_count: row.get(3)?,
-                last_indexed,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+                Ok(SourceFile {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    hash: row.get(2)?,
+                    line_count: row.get(3)?,
+                    last_indexed,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(files)
     }
@@ -398,15 +411,16 @@ impl Database {
             "#,
         )?;
 
-        let results = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, usize>(2)?,
-                row.get::<_, usize>(3)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let results = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, usize>(2)?,
+                    row.get::<_, usize>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(results)
     }
@@ -421,19 +435,21 @@ impl Database {
             "#,
         )?;
 
-        let symbols = stmt.query_map(params![file_id], |row| {
-            Ok(Symbol {
-                id: row.get(0)?,
-                file_id: row.get(1)?,
-                name: row.get(2)?,
-                kind: SymbolKind::from_str(&row.get::<_, String>(3)?).unwrap_or(SymbolKind::Variable),
-                start_line: row.get(4)?,
-                end_line: row.get(5)?,
-                is_exported: row.get(6)?,
-                source_text: row.get(7)?,
-            })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let symbols = stmt
+            .query_map(params![file_id], |row| {
+                Ok(Symbol {
+                    id: row.get(0)?,
+                    file_id: row.get(1)?,
+                    name: row.get(2)?,
+                    kind: SymbolKind::from_str(&row.get::<_, String>(3)?)
+                        .unwrap_or(SymbolKind::Variable),
+                    start_line: row.get(4)?,
+                    end_line: row.get(5)?,
+                    is_exported: row.get(6)?,
+                    source_text: row.get(7)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(symbols)
     }
@@ -451,40 +467,43 @@ impl Database {
             "#,
         )?;
 
-        let results = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, usize>(2)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        let results = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, usize>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(results)
     }
 
     /// Check if an exported symbol has any references
     pub fn has_references(&self, symbol_id: i64) -> Result<bool, DbError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT COUNT(*) FROM refs WHERE symbol_id = ?1"
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM refs WHERE symbol_id = ?1")?;
         let count: i64 = stmt.query_row(params![symbol_id], |row| row.get(0))?;
         Ok(count > 0)
     }
 
     /// Get database statistics
     pub fn get_stats(&self) -> Result<DbStats, DbError> {
-        let file_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files", [], |row| row.get(0)
-        )?;
-        let symbol_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM symbols", [], |row| row.get(0)
-        )?;
-        let import_count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM imports", [], |row| row.get(0)
-        )?;
+        let file_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))?;
+        let symbol_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM symbols", [], |row| row.get(0))?;
+        let import_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM imports", [], |row| row.get(0))?;
         let total_lines: i64 = self.conn.query_row(
-            "SELECT COALESCE(SUM(line_count), 0) FROM files", [], |row| row.get(0)
+            "SELECT COALESCE(SUM(line_count), 0) FROM files",
+            [],
+            |row| row.get(0),
         )?;
 
         Ok(DbStats {

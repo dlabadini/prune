@@ -1,4 +1,4 @@
-# Keel: Product Requirements Document
+# Prune: Product Requirements Document
 
 **Version:** 1.0
 **Date:** December 30, 2024
@@ -8,17 +8,17 @@
 
 ## Executive Summary
 
-Keel is a local-first developer tool that detects structural and semantic anti-patterns in codebases—particularly those introduced by AI coding assistants—and provides a feedback loop for AI-assisted refactoring. Keel doesn't fix code; it watches, scores, and guides while the user's AI agent of choice does the work.
+Prune is a local-first developer tool that detects structural and semantic anti-patterns in codebases—particularly those introduced by AI coding assistants—and provides a feedback loop for AI-assisted refactoring. Prune doesn't fix code; it watches, scores, and guides while the user's AI agent of choice does the work.
 
-**Core insight:** AI coding tools produce functional but messy code. Existing linters catch syntax issues, not conceptual problems like interface sprawl, redundant logic, or over-abstraction. Keel fills this gap.
+**Core insight:** AI coding tools produce functional but messy code. Existing linters catch syntax issues, not conceptual problems like interface sprawl, redundant logic, or over-abstraction. Prune fills this gap.
 
 **Core loop:**
-1. Keel detects anti-patterns, calibrated to team context
+1. Prune detects anti-patterns, calibrated to team context
 2. User selects an issue to fix
-3. Keel generates a structured refactor plan (markdown)
+3. Prune generates a structured refactor plan (markdown)
 4. User feeds plan to any AI agent (Cursor, Aider, Claude Code, etc.)
 5. Agent makes changes
-6. Keel watches in real-time, validates fixes, surfaces new issues
+6. Prune watches in real-time, validates fixes, surfaces new issues
 7. Repeat until clean
 
 ---
@@ -49,13 +49,13 @@ No tool currently:
 
 ## Solution Overview
 
-### What Keel Is
+### What Prune Is
 - A local CLI and desktop app for detecting code anti-patterns
 - A referee for AI-assisted refactoring (watches and scores, doesn't play)
 - A context generator that makes AI agents more effective
 - Goal-aware: patterns are scored against team size, codebase lifespan, philosophy
 
-### What Keel Is Not
+### What Prune Is Not
 - An AI coding assistant (no code generation)
 - A linter replacement (complements, doesn't replace ESLint/Prettier)
 - A cloud service (all processing local, no data leaves machine)
@@ -64,7 +64,7 @@ No tool currently:
 ### Core Value Proposition
 **"The guardrail for AI-assisted refactoring."**
 
-You trust AI to write code. Keel tells you when that trust was misplaced, and guides cleanup without making things worse.
+You trust AI to write code. Prune tells you when that trust was misplaced, and guides cleanup without making things worse.
 
 ---
 

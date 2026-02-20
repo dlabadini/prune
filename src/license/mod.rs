@@ -2,7 +2,7 @@
 //!
 //! Supports offline-capable license key validation with graceful degradation.
 
-use chrono::{DateTime, Utc, Duration};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use thiserror::Error;
@@ -105,6 +105,12 @@ pub struct LicenseManager {
     cached_license: Option<License>,
 }
 
+impl Default for LicenseManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LicenseManager {
     pub fn new() -> Self {
         let license_path = dirs::config_dir()
@@ -131,8 +137,8 @@ impl LicenseManager {
         let content = std::fs::read_to_string(&self.license_path)
             .map_err(|e| LicenseError::ReadError(e.to_string()))?;
 
-        let license: License = serde_json::from_str(&content)
-            .map_err(|e| LicenseError::ReadError(e.to_string()))?;
+        let license: License =
+            serde_json::from_str(&content).map_err(|e| LicenseError::ReadError(e.to_string()))?;
 
         self.cached_license = Some(license);
         Ok(self.cached_license.as_ref().unwrap())
@@ -141,8 +147,7 @@ impl LicenseManager {
     /// Save license to disk
     pub fn save(&mut self, license: License) -> Result<(), LicenseError> {
         if let Some(parent) = self.license_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| LicenseError::WriteError(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| LicenseError::WriteError(e.to_string()))?;
         }
 
         let content = serde_json::to_string_pretty(&license)
@@ -214,14 +219,21 @@ pub enum LicenseStatus {
 
 impl LicenseStatus {
     pub fn is_usable(&self) -> bool {
-        matches!(self, LicenseStatus::Valid(_) | LicenseStatus::GracePeriod(_))
+        matches!(
+            self,
+            LicenseStatus::Valid(_) | LicenseStatus::GracePeriod(_)
+        )
     }
 
     pub fn message(&self) -> String {
         match self {
             LicenseStatus::Valid(l) => {
                 if let Some(days) = l.days_remaining() {
-                    format!("{} license - {} days remaining", l.tier.display_name(), days)
+                    format!(
+                        "{} license - {} days remaining",
+                        l.tier.display_name(),
+                        days
+                    )
                 } else {
                     format!("{} license - perpetual", l.tier.display_name())
                 }
@@ -229,9 +241,7 @@ impl LicenseStatus {
             LicenseStatus::GracePeriod(_) => {
                 "License expired - grace period active. Please renew.".to_string()
             }
-            LicenseStatus::Expired(_) => {
-                "License expired. Running in read-only mode.".to_string()
-            }
+            LicenseStatus::Expired(_) => "License expired. Running in read-only mode.".to_string(),
             LicenseStatus::NoLicense => {
                 "No license found. Start a trial at https://prunecode.ai/trial".to_string()
             }
@@ -268,10 +278,7 @@ fn validate_license_key(key: &str, email: &str) -> Result<License, LicenseError>
     };
 
     let features = match tier {
-        LicenseTier::Solo => vec![
-            "cli".to_string(),
-            "all_patterns".to_string(),
-        ],
+        LicenseTier::Solo => vec!["cli".to_string(), "all_patterns".to_string()],
         LicenseTier::Pro => vec![
             "cli".to_string(),
             "all_patterns".to_string(),
@@ -295,7 +302,11 @@ fn validate_license_key(key: &str, email: &str) -> Result<License, LicenseError>
         email: email.to_string(),
         issued_at: Utc::now(),
         expires_at,
-        seats: if tier == LicenseTier::Team { Some(5) } else { None },
+        seats: if tier == LicenseTier::Team {
+            Some(5)
+        } else {
+            None
+        },
         features,
     })
 }
@@ -310,7 +321,8 @@ fn generate_trial_key(email: &str) -> String {
     Utc::now().timestamp().hash(&mut hasher);
     let hash = hasher.finish();
 
-    format!("PRUNE-TRIAL-{:06X}-{:06X}-{:06X}",
+    format!(
+        "PRUNE-TRIAL-{:06X}-{:06X}-{:06X}",
         (hash >> 48) as u32 & 0xFFFFFF,
         (hash >> 24) as u32 & 0xFFFFFF,
         hash as u32 & 0xFFFFFF
@@ -332,10 +344,14 @@ pub fn generate_license_key(tier: LicenseTier, identifier: &str) -> String {
 
     let mut hasher = DefaultHasher::new();
     identifier.hash(&mut hasher);
-    Utc::now().timestamp_nanos_opt().unwrap_or(0).hash(&mut hasher);
+    Utc::now()
+        .timestamp_nanos_opt()
+        .unwrap_or(0)
+        .hash(&mut hasher);
     let hash = hasher.finish();
 
-    format!("PRUNE-{}-{:06X}-{:06X}-{:06X}",
+    format!(
+        "PRUNE-{}-{:06X}-{:06X}-{:06X}",
         tier_code,
         (hash >> 48) as u32 & 0xFFFFFF,
         (hash >> 24) as u32 & 0xFFFFFF,

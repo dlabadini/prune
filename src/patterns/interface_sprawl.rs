@@ -41,9 +41,8 @@ impl PatternDetector for InterfaceSprawlDetector {
             }
 
             // Check if types are across different files (more significant)
-            let unique_files: std::collections::HashSet<_> = cluster.iter()
-                .map(|s| s.file_id)
-                .collect();
+            let unique_files: std::collections::HashSet<_> =
+                cluster.iter().map(|s| s.file_id).collect();
 
             if unique_files.len() < 2 {
                 // All in same file - less concerning
@@ -56,11 +55,7 @@ impl PatternDetector for InterfaceSprawlDetector {
             let type_names: Vec<_> = cluster.iter().map(|s| s.name.clone()).collect();
             let concept = infer_concept_name(&type_names);
 
-            let title = format!(
-                "{} types represent '{}' concept",
-                cluster.len(),
-                concept
-            );
+            let title = format!("{} types represent '{}' concept", cluster.len(), concept);
 
             let description = format!(
                 "Multiple type definitions appear to represent the same domain concept: {}. \
@@ -74,19 +69,15 @@ impl PatternDetector for InterfaceSprawlDetector {
                 - Changes require updates in multiple places\n\
                 - Inconsistencies emerge over time (one type gets a new field, others don't)\n\
                 - Developers waste time understanding which type to use\n\
-                - Type safety is weakened by implicit conversions between similar types"
+                - Type safety is weakened by implicit conversions between similar types",
             );
 
             let mut locations = Vec::new();
             for symbol in &cluster {
                 if let Ok(Some(path)) = db.get_file_path(symbol.file_id) {
-                    let location = Location::new(
-                        path,
-                        symbol.start_line,
-                        symbol.end_line,
-                    )
-                    .with_snippet(symbol.source_text.clone())
-                    .with_context(format!("{}: {}", symbol.kind.as_str(), symbol.name));
+                    let location = Location::new(path, symbol.start_line, symbol.end_line)
+                        .with_snippet(symbol.source_text.clone())
+                        .with_context(format!("{}: {}", symbol.kind.as_str(), symbol.name));
                     locations.push(location);
                 }
             }
@@ -112,11 +103,7 @@ impl PatternDetector for InterfaceSprawlDetector {
     }
 }
 
-fn find_similar_clusters(
-    symbols: &[Symbol],
-    threshold: f32,
-    _db: &Database,
-) -> Vec<Vec<Symbol>> {
+fn find_similar_clusters(symbols: &[Symbol], threshold: f32, _db: &Database) -> Vec<Vec<Symbol>> {
     let mut clusters: Vec<Vec<Symbol>> = Vec::new();
     let mut used: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
@@ -193,7 +180,18 @@ fn calculate_name_similarity(a: &str, b: &str) -> f32 {
 }
 
 fn extract_base_name(name: &str) -> String {
-    let suffixes = ["Props", "Data", "Info", "Type", "Interface", "DTO", "Model", "Entity", "Response", "Request"];
+    let suffixes = [
+        "Props",
+        "Data",
+        "Info",
+        "Type",
+        "Interface",
+        "DTO",
+        "Model",
+        "Entity",
+        "Response",
+        "Request",
+    ];
 
     let mut base = name.to_string();
     for suffix in suffixes {
@@ -208,9 +206,7 @@ fn extract_base_name(name: &str) -> String {
 
 fn infer_concept_name(type_names: &[String]) -> String {
     // Try to find common base name
-    let base_names: Vec<_> = type_names.iter()
-        .map(|n| extract_base_name(n))
-        .collect();
+    let base_names: Vec<_> = type_names.iter().map(|n| extract_base_name(n)).collect();
 
     // Find the most common base name
     let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
@@ -218,7 +214,8 @@ fn infer_concept_name(type_names: &[String]) -> String {
         *counts.entry(name.clone()).or_insert(0) += 1;
     }
 
-    counts.into_iter()
+    counts
+        .into_iter()
         .max_by_key(|(_, count)| *count)
         .map(|(name, _)| {
             // Capitalize first letter
@@ -253,7 +250,8 @@ fn calculate_confidence(cluster: &[Symbol], threshold: f32) -> f32 {
 }
 
 fn generate_fix_suggestion(concept: &str, type_names: &[String], locations: &[Location]) -> String {
-    let type_files: Vec<String> = locations.iter()
+    let type_files: Vec<String> = locations
+        .iter()
         .map(|l| extract_filename(&l.file).to_string())
         .collect();
     let files_list = type_files.join("\n   - ");

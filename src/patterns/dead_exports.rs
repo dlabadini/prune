@@ -41,7 +41,8 @@ impl PatternDetector for DeadExportsDetector {
         }
 
         // Group by file for better reporting
-        let mut by_file: std::collections::HashMap<String, Vec<_>> = std::collections::HashMap::new();
+        let mut by_file: std::collections::HashMap<String, Vec<_>> =
+            std::collections::HashMap::new();
         for (symbol, path) in dead_exports {
             by_file.entry(path).or_default().push(symbol);
         }
@@ -79,12 +80,8 @@ impl PatternDetector for DeadExportsDetector {
 
             let mut locations = Vec::new();
             for symbol in &symbols {
-                let location = Location::new(
-                    file_path.clone(),
-                    symbol.start_line,
-                    symbol.end_line,
-                )
-                .with_context(format!("{}: {}", symbol.kind.as_str(), symbol.name));
+                let location = Location::new(file_path.clone(), symbol.start_line, symbol.end_line)
+                    .with_context(format!("{}: {}", symbol.kind.as_str(), symbol.name));
                 locations.push(location);
             }
 
@@ -128,7 +125,7 @@ fn generate_fix_suggestion(file_path: &str, symbol_names: &[String]) -> String {
         r#"For each unused export in `{}`:
 
 1. **Verify it's truly unused**:
-   - Check if it's used in tests (Keel only analyzes source files)
+   - Check if it's used in tests (Prune only analyzes source files)
    - Check if it's part of a public library API
    - Search for dynamic imports or string-based access
 

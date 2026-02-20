@@ -14,6 +14,8 @@ pub mod watcher;
 pub use analyzer::{Analyzer, AnalyzerError, ScanResult};
 pub use config::Config;
 pub use db::Database;
-pub use license::{License, LicenseError, LicenseManager, LicenseStatus, LicenseTier, generate_license_key};
+pub use license::{
+    generate_license_key, License, LicenseError, LicenseManager, LicenseStatus, LicenseTier,
+};
 pub use patterns::{Finding, PatternDetector, PatternType, Severity};
 pub use plan::RefactorPlan;

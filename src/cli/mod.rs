@@ -98,6 +98,8 @@ pub enum LicenseAction {
 
 impl Cli {
     pub fn project_root(&self) -> PathBuf {
-        self.path.clone().unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        self.path
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
 }
