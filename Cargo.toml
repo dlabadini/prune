@@ -7,6 +7,12 @@ license = "MIT"
 repository = "https://github.com/dlabadini/prune"
 keywords = ["linter", "code-analysis", "refactoring", "ai", "developer-tools"]
 categories = ["development-tools", "command-line-utilities"]
+include = [
+    "/src/**",
+    "/README.md",
+    "/LICENSE*",
+    "/rust-toolchain.toml",
+]
 
 [dependencies]
 # CLI & TUI
