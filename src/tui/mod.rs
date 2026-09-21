@@ -37,8 +37,7 @@ pub fn run(root: &Path) -> io::Result<()> {
         }
     };
 
-    // Initial scan
-    app.scan();
+    app.start_scan();
 
     // Main loop
     let result = run_app(&mut terminal, &mut app);
@@ -57,6 +56,7 @@ pub fn run(root: &Path) -> io::Result<()> {
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
     loop {
+        app.poll_scan();
         terminal.draw(|f| draw(f, app))?;
 
         // Handle file watcher events if in watch mode
@@ -108,20 +108,33 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 }
 
 fn handle_list_keys(app: &mut App, key: KeyCode) {
+    if app.scanning() {
+        match key {
+            KeyCode::Char('q') => app.should_quit = true,
+            KeyCode::Esc => app.set_status("This pass runs to completion".to_string()),
+            _ => {}
+        }
+        return;
+    }
+
+    let typing = !app.query.is_empty();
     match key {
-        KeyCode::Char('q') => app.should_quit = true,
-        KeyCode::Char('?') => app.state = AppState::Help,
-        KeyCode::Up | KeyCode::Char('k') => app.previous_finding(),
-        KeyCode::Down | KeyCode::Char('j') => app.next_finding(),
+        KeyCode::Char('q') if !typing => app.should_quit = true,
+        KeyCode::Char('?') if !typing => app.state = AppState::Help,
+        KeyCode::Up => app.previous_finding(),
+        KeyCode::Down => app.next_finding(),
+        KeyCode::Char('k') if !typing => app.previous_finding(),
+        KeyCode::Char('j') if !typing => app.next_finding(),
+        KeyCode::Home | KeyCode::Char('g') if !typing => app.first_finding(),
+        KeyCode::Char('G') if !typing => app.last_finding(),
+        KeyCode::End if !typing => app.last_finding(),
+        KeyCode::Enter if app.query.starts_with('/') => app.run_command(),
         KeyCode::Enter => app.enter_detail(),
-        KeyCode::Char('c') => app.copy_plan_to_clipboard(),
-        KeyCode::Char('p') => app.save_plan_to_file(),
-        KeyCode::Char('w') => app.toggle_watch_mode(),
-        KeyCode::Char('s') => app.cycle_strictness(),
-        KeyCode::Char('f') => app.cycle_filter(),
-        KeyCode::Char('r') => app.scan(),
-        KeyCode::Home | KeyCode::Char('g') => app.first_finding(),
-        KeyCode::End | KeyCode::Char('G') => app.last_finding(),
+        KeyCode::Char('c') if !typing => app.copy_next_step(),
+        KeyCode::Char('x') if !typing => app.skip_selected(),
+        KeyCode::Esc => app.clear_query(),
+        KeyCode::Backspace => app.pop_query(),
+        KeyCode::Char(ch) => app.push_query(ch),
         _ => {}
     }
 }
@@ -132,7 +145,7 @@ fn handle_detail_keys(app: &mut App, key: KeyCode) {
         KeyCode::Char('?') => app.state = AppState::Help,
         KeyCode::Up | KeyCode::Char('k') => app.scroll_detail_up(),
         KeyCode::Down | KeyCode::Char('j') => app.scroll_detail_down(),
-        KeyCode::Char('c') => app.copy_plan_to_clipboard(),
+        KeyCode::Char('c') => app.copy_next_step(),
         KeyCode::Char('p') => app.save_plan_to_file(),
         KeyCode::PageUp => app.scroll_detail_page_up(),
         KeyCode::PageDown => app.scroll_detail_page_down(),

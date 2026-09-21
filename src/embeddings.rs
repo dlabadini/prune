@@ -1,6 +1,7 @@
 //! Local embeddings with fastembed, stored in sqlite-vec.
 
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
+use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 pub const EMBED_DIM: usize = 384;
@@ -19,6 +20,28 @@ fn embedder() -> Option<std::sync::MutexGuard<'static, TextEmbedding>> {
         }
     });
     slot.as_ref().and_then(|mutex| mutex.lock().ok())
+}
+
+/// Whether the MiniLM weights are already on disk. The first embed downloads them.
+pub fn embedding_model_ready() -> bool {
+    let cache = std::env::var("FASTEMBED_CACHE_DIR").unwrap_or_else(|_| ".fastembed_cache".into());
+    onnx_present(&PathBuf::from(cache))
+}
+
+fn onnx_present(dir: &std::path::Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() && onnx_present(&path) {
+            return true;
+        }
+        if path.file_name().and_then(|name| name.to_str()) == Some("model.onnx") {
+            return true;
+        }
+    }
+    false
 }
 
 /// Embed a batch of texts. Returns nothing when the local model cannot load.

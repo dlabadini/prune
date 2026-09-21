@@ -61,6 +61,8 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
 
     if json {
         let output = serde_json::json!({
+            "version": result.score.version,
+            "score": result.score,
             "files_scanned": result.files_scanned,
             "files_changed": result.files_changed,
             "total_lines": result.total_lines,
@@ -70,44 +72,41 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
         });
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
     } else {
-        println!("Prune Scan Results");
-        println!("==================");
-        println!();
+        println!(
+            "Prune  {}    {}",
+            result.score.summary(),
+            result.score.version
+        );
+        println!(
+            "Essential {:.1}/{:.0}   Recommended {:.1}/{:.0}   Bonus {:.1}",
+            result.score.essential_earned,
+            result.score.essential_available,
+            result.score.recommended_earned,
+            result.score.recommended_available,
+            result.score.bonus
+        );
         println!(
             "Scanned {} files ({} lines) in {}ms",
             result.files_scanned, result.total_lines, result.scan_duration_ms
         );
-        println!("Found {} symbols", result.symbols_found);
         println!();
 
         if result.findings.is_empty() {
-            println!("No issues found! Your codebase looks clean.");
+            println!("No issues found.");
         } else {
-            println!("Found {} issues:", result.findings.len());
-            println!();
-
             for finding in &result.findings {
-                let severity_indicator = match finding.severity {
-                    prune_core::Severity::Critical => "[!!!!]",
-                    prune_core::Severity::High => "[!! ]",
-                    prune_core::Severity::Medium => "[!  ]",
-                    prune_core::Severity::Low => "[.  ]",
-                };
-
                 println!(
-                    "{} {} - {}",
-                    severity_indicator,
+                    "{} {}  {} — {}",
+                    finding.pattern_type.tier().as_str(),
+                    prune_core::score::finding_outcome(finding).as_str(),
                     finding.pattern_type.display_name(),
                     finding.title
                 );
-                println!("    ID: {}", finding.id);
-
+                println!("    {}", finding.id);
                 for loc in &finding.locations {
-                    println!(
-                        "    {} (lines {}-{})",
-                        loc.file, loc.start_line, loc.end_line
-                    );
+                    println!("    {}:{}", loc.file, loc.start_line);
                 }
+                println!("    Next: {}", prune_core::score::next_line(finding));
                 println!();
             }
         }

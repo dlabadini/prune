@@ -35,7 +35,22 @@ pub struct ScanResult {
     pub total_lines: usize,
     pub symbols_found: usize,
     pub findings: Vec<Finding>,
+    pub score: crate::score::RepoScore,
     pub scan_duration_ms: u64,
+}
+
+/// What the scanner is doing, so a UI can name the step.
+#[derive(Debug, Clone)]
+pub enum ScanProgress {
+    Indexing {
+        done: usize,
+        total: usize,
+        file: String,
+    },
+    Embedding {
+        model_ready: bool,
+    },
+    Scoring,
 }
 
 /// Main analyzer for scanning codebases
@@ -91,14 +106,28 @@ impl Analyzer {
 
     /// Scan the codebase and detect patterns
     pub fn scan(&mut self) -> Result<ScanResult, AnalyzerError> {
+        self.scan_reporting(&mut |_| {})
+    }
+
+    /// Scan, reporting each step to `report`.
+    pub fn scan_reporting(
+        &mut self,
+        report: &mut dyn FnMut(ScanProgress),
+    ) -> Result<ScanResult, AnalyzerError> {
         let start = Instant::now();
 
         let files = self.collect_files()?;
         let mut files_scanned = 0;
         let mut files_changed = 0;
+        let total = files.len();
 
         for file_path in &files {
             files_scanned += 1;
+            report(ScanProgress::Indexing {
+                done: files_scanned,
+                total,
+                file: self.relative_path(file_path),
+            });
 
             // Check if file has changed
             let content = std::fs::read_to_string(file_path)?;
@@ -116,11 +145,12 @@ impl Analyzer {
             }
         }
 
-        self.finalize_index()?;
+        self.finalize_index(report)?;
 
-        // Run pattern detection
+        report(ScanProgress::Scoring);
         let mut findings = run_all_detectors(&self.db, &self.config);
         crate::gitinfo::annotate_findings(&self.root, &mut findings);
+        let score = crate::score::score_repo(&self.db, &self.config, &findings)?;
 
         let stats = self.db.get_stats()?;
 
@@ -130,8 +160,17 @@ impl Analyzer {
             total_lines: stats.total_lines,
             symbols_found: stats.symbol_count,
             findings,
+            score,
             scan_duration_ms: start.elapsed().as_millis() as u64,
         })
+    }
+
+    /// Score an existing finding list against the current index.
+    pub fn score_findings(
+        &self,
+        findings: &[Finding],
+    ) -> Result<crate::score::RepoScore, AnalyzerError> {
+        Ok(crate::score::score_repo(&self.db, &self.config, findings)?)
     }
 
     /// Re-index a single file (for watch mode)
@@ -147,7 +186,7 @@ impl Analyzer {
         let hash = calculate_hash(&content);
 
         self.index_file(file_path, &content, &hash)?;
-        self.finalize_index()?;
+        self.finalize_index(&mut |_| {})?;
         Ok(())
     }
 
@@ -264,7 +303,10 @@ impl Analyzer {
     }
 
     /// Resolve imports, record cross-file references, and refresh embeddings.
-    fn finalize_index(&mut self) -> Result<(), AnalyzerError> {
+    fn finalize_index(
+        &mut self,
+        report: &mut dyn FnMut(ScanProgress),
+    ) -> Result<(), AnalyzerError> {
         self.db.clear_refs()?;
         let edges = self.db.import_edges()?;
         for edge in edges {
@@ -302,6 +344,9 @@ impl Analyzer {
             }
         }
 
+        report(ScanProgress::Embedding {
+            model_ready: crate::embeddings::embedding_model_ready(),
+        });
         self.embed_symbols()?;
         Ok(())
     }
@@ -514,5 +559,18 @@ export function pass(value: string) { return trim(value); }
             kinds.iter().any(|kind| *kind == "over_abstraction"),
             "findings={kinds:?}"
         );
+        let again = analyzer.scan().unwrap();
+        let first_ids: Vec<_> = result
+            .findings
+            .iter()
+            .map(|finding| finding.id.clone())
+            .collect();
+        let second_ids: Vec<_> = again
+            .findings
+            .iter()
+            .map(|finding| finding.id.clone())
+            .collect();
+        assert_eq!(first_ids, second_ids);
+        assert!(again.score.total <= 105.0);
     }
 }

@@ -84,6 +84,25 @@ impl Location {
     }
 }
 
+/// Scoring pool. Emerging findings can raise the repo score and cannot lower it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tier {
+    Essential,
+    Recommended,
+    Emerging,
+}
+
+impl Tier {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Tier::Essential => "essential",
+            Tier::Recommended => "recommended",
+            Tier::Emerging => "emerging",
+        }
+    }
+}
+
 /// The type of pattern detected
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -119,6 +138,19 @@ impl PatternType {
             PatternType::DeadExports => "Dead Exports",
             PatternType::OverAbstraction => "Over-Abstraction",
             PatternType::ImportCycle => "Import Cycle",
+        }
+    }
+
+    /// Pool this pattern belongs to. Emerging can only add bonus points.
+    pub fn tier(&self) -> Tier {
+        match self {
+            PatternType::GodFile | PatternType::DeadExports | PatternType::ImportCycle => {
+                Tier::Essential
+            }
+            PatternType::InterfaceSprawl
+            | PatternType::RedundantLogic
+            | PatternType::BarrelBloat => Tier::Recommended,
+            PatternType::OverAbstraction => Tier::Emerging,
         }
     }
 
@@ -235,6 +267,11 @@ impl Finding {
     pub fn short_id(&self) -> &str {
         &self.id
     }
+
+    /// Replace the per-scan uuid with an id derived from the pattern, title, and locations.
+    pub fn stabilize_id(&mut self) {
+        self.id = crate::score::stable_finding_id(self.pattern_type, &self.title, &self.locations);
+    }
 }
 
 /// Trait for pattern detectors
@@ -270,6 +307,10 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
             let findings = detector.detect(db, config);
             all_findings.extend(findings);
         }
+    }
+
+    for finding in &mut all_findings {
+        finding.stabilize_id();
     }
 
     // Sort by severity (highest first), then by confidence

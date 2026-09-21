@@ -56,6 +56,8 @@ impl PruneServer {
         let result = analyzer.scan().map_err(tool_error)?;
         let payload = json!({
             "root": root,
+            "version": result.score.version,
+            "score": result.score,
             "files_scanned": result.files_scanned,
             "symbols_found": result.symbols_found,
             "findings": result.findings,

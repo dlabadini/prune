@@ -1,12 +1,16 @@
 //! TUI Application state and logic
 
 use arboard::Clipboard;
-use prune_core::analyzer::{Analyzer, AnalyzerError, ScanResult};
-use prune_core::config::Strictness;
-use prune_core::patterns::{Finding, PatternType};
+use prune_core::analyzer::{Analyzer, AnalyzerError, ScanProgress, ScanResult};
+use prune_core::patterns::Finding;
 use prune_core::plan::RefactorPlan;
+use prune_core::score::{self, RepoScore};
 use prune_core::watcher::{FileWatcher, WatchEvent, WatchState};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 /// Application state enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,45 +20,23 @@ pub enum AppState {
     Help,
 }
 
-/// Filter for findings
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FindingFilter {
-    All,
-    Pattern(PatternType),
+const COMMANDS: &[(&str, &str)] = &[
+    ("strict", "Cycle strictness and rescan"),
+    ("watch", "Toggle watch mode"),
+    ("sort", "Toggle severity and tier order"),
+    ("rescan", "Scan again"),
+    ("save", "Write the full plan to REFACTOR_PLAN.md"),
+    ("help", "Show keys"),
+];
+
+struct ScanDone {
+    analyzer: Analyzer,
+    result: Result<ScanResult, AnalyzerError>,
 }
 
-impl FindingFilter {
-    pub fn cycle(self) -> Self {
-        match self {
-            FindingFilter::All => FindingFilter::Pattern(PatternType::InterfaceSprawl),
-            FindingFilter::Pattern(PatternType::InterfaceSprawl) => {
-                FindingFilter::Pattern(PatternType::RedundantLogic)
-            }
-            FindingFilter::Pattern(PatternType::RedundantLogic) => {
-                FindingFilter::Pattern(PatternType::GodFile)
-            }
-            FindingFilter::Pattern(PatternType::GodFile) => {
-                FindingFilter::Pattern(PatternType::BarrelBloat)
-            }
-            FindingFilter::Pattern(PatternType::BarrelBloat) => {
-                FindingFilter::Pattern(PatternType::DeadExports)
-            }
-            FindingFilter::Pattern(PatternType::DeadExports) => {
-                FindingFilter::Pattern(PatternType::OverAbstraction)
-            }
-            FindingFilter::Pattern(PatternType::OverAbstraction) => {
-                FindingFilter::Pattern(PatternType::ImportCycle)
-            }
-            FindingFilter::Pattern(PatternType::ImportCycle) => FindingFilter::All,
-        }
-    }
-
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            FindingFilter::All => "All",
-            FindingFilter::Pattern(p) => p.display_name(),
-        }
-    }
+struct InflightScan {
+    done: Receiver<ScanDone>,
+    progress: Arc<Mutex<Option<ScanProgress>>>,
 }
 
 /// Main application state
@@ -62,12 +44,16 @@ pub struct App {
     pub state: AppState,
     pub should_quit: bool,
     pub root: PathBuf,
-    pub analyzer: Analyzer,
+    analyzer: Option<Analyzer>,
+    inflight: Option<InflightScan>,
     pub findings: Vec<Finding>,
-    pub filtered_findings: Vec<usize>, // Indices into findings
+    pub filtered_findings: Vec<usize>,
     pub selected_index: usize,
     pub detail_scroll: usize,
-    pub filter: FindingFilter,
+    pub query: String,
+    pub sort_by_tier: bool,
+    pub score: Option<RepoScore>,
+    skipped: HashSet<String>,
     pub status_message: Option<String>,
     pub last_scan: Option<ScanResult>,
     pub watch_state: WatchState,
@@ -84,12 +70,16 @@ impl App {
             state: AppState::List,
             should_quit: false,
             root: root.to_path_buf(),
-            analyzer,
+            analyzer: Some(analyzer),
+            inflight: None,
             findings: Vec::new(),
             filtered_findings: Vec::new(),
             selected_index: 0,
             detail_scroll: 0,
-            filter: FindingFilter::All,
+            query: String::new(),
+            sort_by_tier: false,
+            score: None,
+            skipped: HashSet::new(),
             status_message: None,
             last_scan: None,
             watch_state: WatchState::new(),
@@ -98,68 +88,220 @@ impl App {
         })
     }
 
-    /// Run initial scan
-    pub fn scan(&mut self) {
-        self.set_status("Scanning...".to_string());
-
-        match self.analyzer.scan() {
-            Ok(result) => {
-                self.findings = result.findings.clone();
-                self.last_scan = Some(result.clone());
-                self.apply_filter();
-                self.set_status(format!(
-                    "Scanned {} files in {}ms. Found {} issues.",
-                    result.files_scanned,
-                    result.scan_duration_ms,
-                    self.findings.len()
-                ));
-            }
-            Err(e) => {
-                self.set_status(format!("Scan error: {}", e));
-            }
-        }
+    pub fn scanning(&self) -> bool {
+        self.inflight.is_some()
     }
 
-    /// Refresh findings without full rescan
-    pub fn refresh_findings(&mut self) {
-        self.findings = self.analyzer.get_findings();
-        self.apply_filter();
+    /// Start a scan on a background thread so the status line can update.
+    pub fn start_scan(&mut self) {
+        if self.inflight.is_some() {
+            return;
+        }
+        let Some(mut analyzer) = self.analyzer.take() else {
+            return;
+        };
+        let model_ready = prune_core::embeddings::embedding_model_ready();
+        self.set_status(if model_ready {
+            "Scanning...".to_string()
+        } else {
+            "Downloading local embedding model (~80 MB), then scanning".to_string()
+        });
+
+        let progress = Arc::new(Mutex::new(None));
+        let slot = Arc::clone(&progress);
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let result = analyzer.scan_reporting(&mut |event| {
+                if let Ok(mut current) = slot.lock() {
+                    *current = Some(event);
+                }
+            });
+            let _ = tx.send(ScanDone { analyzer, result });
+        });
+        self.inflight = Some(InflightScan { done: rx, progress });
+    }
+
+    /// Pull progress and apply a finished scan.
+    pub fn poll_scan(&mut self) {
+        let finished = self
+            .inflight
+            .as_ref()
+            .and_then(|inflight| inflight.done.try_recv().ok());
+        if let Some(done) = finished {
+            self.inflight = None;
+            self.analyzer = Some(done.analyzer);
+            match done.result {
+                Ok(result) => {
+                    self.skipped.clear();
+                    self.findings = result.findings.clone();
+                    self.score = Some(result.score.clone());
+                    self.last_scan = Some(result.clone());
+                    self.apply_filter();
+                    self.set_status(format!(
+                        "{}  ·  {} files in {}ms",
+                        result.score.summary(),
+                        result.files_scanned,
+                        result.scan_duration_ms
+                    ));
+                }
+                Err(error) => self.set_status(format!("Scan error: {error}")),
+            }
+            return;
+        }
+
+        let message = self.inflight.as_ref().and_then(|inflight| {
+            inflight
+                .progress
+                .lock()
+                .ok()
+                .and_then(|slot| slot.clone())
+                .map(progress_label)
+        });
+        if let Some(message) = message {
+            self.status_message = Some(message);
+        }
     }
 
     /// Re-index a single file
     pub fn reindex_file(&mut self, path: &Path) {
-        if let Err(e) = self.analyzer.reindex_file(path) {
-            self.set_status(format!("Reindex error: {}", e));
+        let Some(analyzer) = self.analyzer.as_mut() else {
+            return;
+        };
+        if let Err(error) = analyzer.reindex_file(path) {
+            self.set_status(format!("Reindex error: {error}"));
         }
     }
 
-    /// Apply current filter to findings
+    /// Refresh findings without a full file walk.
+    pub fn refresh_findings(&mut self) {
+        let Some(analyzer) = self.analyzer.as_ref() else {
+            return;
+        };
+        self.findings = analyzer.get_findings();
+        self.score = analyzer.score_findings(&self.findings).ok();
+        self.apply_filter();
+    }
+
     fn apply_filter(&mut self) {
-        self.filtered_findings = self
+        let needle = if self.query.starts_with('/') {
+            String::new()
+        } else {
+            self.query.to_lowercase()
+        };
+        let mut indices: Vec<usize> = self
             .findings
             .iter()
             .enumerate()
-            .filter(|(_, f)| match self.filter {
-                FindingFilter::All => true,
-                FindingFilter::Pattern(p) => f.pattern_type == p,
+            .filter(|(_, finding)| !self.skipped.contains(&finding.id))
+            .filter(|(_, finding)| {
+                if needle.is_empty() {
+                    return true;
+                }
+                let title = finding.title.to_lowercase();
+                let pattern = finding.pattern_type.display_name().to_lowercase();
+                let paths = finding
+                    .locations
+                    .iter()
+                    .map(|location| location.file.to_lowercase())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                title.contains(&needle) || pattern.contains(&needle) || paths.contains(&needle)
             })
-            .map(|(i, _)| i)
+            .map(|(index, _)| index)
             .collect();
 
-        // Reset selection if out of bounds
+        if self.sort_by_tier {
+            indices.sort_by(|left, right| {
+                let a = &self.findings[*left];
+                let b = &self.findings[*right];
+                a.pattern_type
+                    .tier()
+                    .cmp(&b.pattern_type.tier())
+                    .then(b.severity.cmp(&a.severity))
+            });
+        }
+
+        self.filtered_findings = indices;
         if self.selected_index >= self.filtered_findings.len() {
             self.selected_index = 0;
         }
     }
 
-    /// Get the currently selected finding
     pub fn selected_finding(&self) -> Option<&Finding> {
         self.filtered_findings
             .get(self.selected_index)
             .and_then(|&idx| self.findings.get(idx))
     }
 
-    /// Navigation
+    pub fn matching_commands(&self) -> Vec<(&'static str, &'static str)> {
+        let Some(typed) = self.query.strip_prefix('/') else {
+            return Vec::new();
+        };
+        let typed = typed.trim();
+        COMMANDS
+            .iter()
+            .copied()
+            .filter(|(name, _)| typed.is_empty() || name.starts_with(typed))
+            .collect()
+    }
+
+    pub fn push_query(&mut self, ch: char) {
+        if self.scanning() {
+            return;
+        }
+        self.query.push(ch);
+        self.apply_filter();
+    }
+
+    pub fn pop_query(&mut self) {
+        self.query.pop();
+        self.apply_filter();
+    }
+
+    pub fn clear_query(&mut self) {
+        self.query.clear();
+        self.apply_filter();
+    }
+
+    /// Run a `/command` when the typed name is exact or a unique prefix.
+    pub fn run_command(&mut self) {
+        let Some(typed) = self.query.strip_prefix('/') else {
+            return;
+        };
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return;
+        }
+        let matches = self.matching_commands();
+        let name = if let Some((exact, _)) = matches.iter().find(|(name, _)| *name == typed) {
+            *exact
+        } else if matches.len() == 1 {
+            matches[0].0
+        } else {
+            self.set_status("Unknown command. Try /rescan, /strict, /watch, /sort, /save".into());
+            return;
+        };
+        self.query.clear();
+        self.apply_filter();
+        match name {
+            "strict" => self.cycle_strictness(),
+            "watch" => self.toggle_watch_mode(),
+            "sort" => {
+                self.sort_by_tier = !self.sort_by_tier;
+                self.apply_filter();
+                self.set_status(if self.sort_by_tier {
+                    "Sorted by tier".into()
+                } else {
+                    "Sorted by severity".into()
+                });
+            }
+            "rescan" => self.start_scan(),
+            "save" => self.save_plan_to_file(),
+            "help" => self.state = AppState::Help,
+            _ => {}
+        }
+    }
+
     pub fn next_finding(&mut self) {
         if self.selected_index < self.filtered_findings.len().saturating_sub(1) {
             self.selected_index += 1;
@@ -180,7 +322,6 @@ impl App {
         self.selected_index = self.filtered_findings.len().saturating_sub(1);
     }
 
-    /// Enter detail view for selected finding
     pub fn enter_detail(&mut self) {
         if self.selected_finding().is_some() {
             self.state = AppState::Detail;
@@ -188,12 +329,10 @@ impl App {
         }
     }
 
-    /// Exit detail view
     pub fn exit_detail(&mut self) {
         self.state = AppState::List;
     }
 
-    /// Scroll in detail view
     pub fn scroll_detail_up(&mut self) {
         self.detail_scroll = self.detail_scroll.saturating_sub(1);
     }
@@ -210,36 +349,42 @@ impl App {
         self.detail_scroll += 10;
     }
 
-    /// Copy refactor plan to clipboard
-    pub fn copy_plan_to_clipboard(&mut self) {
-        if let Some(finding) = self.selected_finding() {
-            let plan = RefactorPlan::generate(finding);
-
-            if let Some(ref mut clipboard) = self.clipboard {
-                match clipboard.set_text(plan.as_markdown()) {
-                    Ok(_) => self.set_status("Plan copied to clipboard".to_string()),
-                    Err(e) => self.set_status(format!("Clipboard error: {}", e)),
-                }
-            } else {
-                self.set_status("Clipboard not available".to_string());
-            }
+    /// Hide the selected finding until the next scan. The score stays put.
+    pub fn skip_selected(&mut self) {
+        if let Some(id) = self.selected_finding().map(|finding| finding.id.clone()) {
+            self.skipped.insert(id);
+            self.apply_filter();
+            self.set_status("Skipped for this session".to_string());
         }
     }
 
-    /// Save refactor plan to file
+    /// Copy the one-step prompt, not the full plan.
+    pub fn copy_next_step(&mut self) {
+        let Some(finding) = self.selected_finding() else {
+            return;
+        };
+        let prompt = score::action_prompt(finding);
+        if let Some(clipboard) = self.clipboard.as_mut() {
+            match clipboard.set_text(prompt) {
+                Ok(()) => self.set_status("Next step copied".to_string()),
+                Err(error) => self.set_status(format!("Clipboard error: {error}")),
+            }
+        } else {
+            self.set_status("Clipboard not available".to_string());
+        }
+    }
+
     pub fn save_plan_to_file(&mut self) {
         if let Some(finding) = self.selected_finding() {
             let plan = RefactorPlan::generate(finding);
             let path = self.root.join("REFACTOR_PLAN.md");
-
             match plan.write_to_file(&path) {
-                Ok(_) => self.set_status(format!("Plan saved to {}", path.display())),
-                Err(e) => self.set_status(format!("Save error: {}", e)),
+                Ok(()) => self.set_status(format!("Plan saved to {}", path.display())),
+                Err(error) => self.set_status(format!("Save error: {error}")),
             }
         }
     }
 
-    /// Toggle watch mode
     pub fn toggle_watch_mode(&mut self) {
         if self.watch_state.is_watching {
             self.stop_watching();
@@ -251,17 +396,15 @@ impl App {
     fn start_watching(&mut self) {
         match FileWatcher::new(&self.root, 200) {
             Ok(mut watcher) => {
-                if let Err(e) = watcher.start() {
-                    self.set_status(format!("Watch error: {}", e));
+                if let Err(error) = watcher.start() {
+                    self.set_status(format!("Watch error: {error}"));
                     return;
                 }
                 self.file_watcher = Some(watcher);
                 self.watch_state.start();
                 self.set_status("Watch mode enabled".to_string());
             }
-            Err(e) => {
-                self.set_status(format!("Watch error: {}", e));
-            }
+            Err(error) => self.set_status(format!("Watch error: {error}")),
         }
     }
 
@@ -273,33 +416,38 @@ impl App {
         self.set_status("Watch mode disabled".to_string());
     }
 
-    /// Check for file watcher events
     pub fn check_file_events(&mut self) -> Option<Vec<WatchEvent>> {
         self.file_watcher.as_ref()?.try_recv()
     }
 
-    /// Cycle strictness level
     pub fn cycle_strictness(&mut self) {
-        let new_strictness = self.analyzer.config().strictness.cycle();
-        self.analyzer.config_mut().strictness = new_strictness;
+        let Some(analyzer) = self.analyzer.as_mut() else {
+            self.set_status("Wait for the scan to finish".to_string());
+            return;
+        };
+        let new_strictness = analyzer.config().strictness.cycle();
+        analyzer.config_mut().strictness = new_strictness;
         self.set_status(format!("Strictness: {}", new_strictness.as_str()));
-        self.scan(); // Rescan with new strictness
+        self.start_scan();
     }
 
-    /// Cycle finding filter
-    pub fn cycle_filter(&mut self) {
-        self.filter = self.filter.cycle();
-        self.apply_filter();
-        self.set_status(format!("Filter: {}", self.filter.display_name()));
-    }
-
-    /// Set status message
     pub fn set_status(&mut self, message: String) {
         self.status_message = Some(message);
     }
+}
 
-    /// Get current strictness
-    pub fn strictness(&self) -> Strictness {
-        self.analyzer.config().strictness
+fn progress_label(progress: ScanProgress) -> String {
+    match progress {
+        ScanProgress::Indexing { done, total, file } => {
+            format!("Reading {file} ({done}/{total})")
+        }
+        ScanProgress::Embedding { model_ready } => {
+            if model_ready {
+                "Embedding symbols".to_string()
+            } else {
+                "Downloading local embedding model (~80 MB)".to_string()
+            }
+        }
+        ScanProgress::Scoring => "Scoring findings".to_string(),
     }
 }

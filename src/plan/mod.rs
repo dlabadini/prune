@@ -42,7 +42,13 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
     md.push_str("# Prune Refactor Plan\n\n");
     md.push_str(&format!("**Generated:** {}\n", generated_at));
     md.push_str(&format!("**Finding ID:** {}\n", finding.id));
-    md.push_str("**Prune Version:** 0.1.0\n\n");
+    md.push_str(&format!(
+        "**Prune Version:** {}\n\n",
+        env!("CARGO_PKG_VERSION")
+    ));
+    md.push_str("## Next step\n\n");
+    md.push_str(&crate::score::action_prompt(finding));
+    md.push('\n');
 
     // Issue section
     md.push_str("## Issue\n\n");
@@ -125,11 +131,11 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
 
     // Verification section
     md.push_str("## Verification\n\n");
-    md.push_str("After refactoring, run:\n");
-    md.push_str("```bash\n");
-    md.push_str(&format!("prune scan --finding {}\n", finding.id));
-    md.push_str("```\n\n");
-    md.push_str("Expected result: Finding resolved or severity reduced.\n\n");
+    md.push_str("After the change, run `prune` again from this repo.\n\n");
+    md.push_str(&format!(
+        "Expected result: finding `{}` is gone.\n\n",
+        finding.id
+    ));
 
     // Footer
     md.push_str("---\n");
