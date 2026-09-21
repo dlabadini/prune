@@ -115,7 +115,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 - **F1.3.1:** Ship with opinionated defaults (small team, pragmatic, ship-fast)
 - **F1.3.2:** Single config option: `strictness: relaxed | default | strict`
 - **F1.3.3:** Per-pattern threshold overrides for power users (e.g., `interface_sprawl.threshold: 5`)
-- **F1.3.4:** Persist in local config file (.keelrc or keel.config.json)
+- **F1.3.4:** Persist in local config file (.prunerc or prune.config.json)
 - **F1.3.5:** No onboarding wizard—works out of the box, users tune if they want
 
 **Rationale:** Most users won't configure anything. Defaults should be useful for the 80% case (small-to-mid team, wants less mess). Power users can tune individual thresholds. Questionnaires are scope bloat.
@@ -123,7 +123,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 #### F1.4: CLI Interface
 
 **Primary: Interactive TUI (default)**
-- **F1.4.1:** `keel` — launches interactive TUI in current directory
+- **F1.4.1:** `prune` — launches interactive TUI in current directory
 - **F1.4.2:** Initial scan runs automatically, shows findings list
 - **F1.4.3:** Arrow keys to navigate findings, Enter to drill into detail
 - **F1.4.4:** Keyboard shortcuts for common actions:
@@ -139,15 +139,15 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 - **F1.4.6:** Status bar: current strictness, watch mode status, last scan time
 
 **Secondary: Direct Commands (for scripting/CI)**
-- **F1.4.7:** `keel scan` — run scan, output to stdout, exit
-- **F1.4.8:** `keel scan --json` — JSON output for tooling integration
-- **F1.4.9:** `keel scan --watch` — headless watch mode (logs changes)
-- **F1.4.10:** `keel plan <finding-id>` — output plan to stdout
-- **F1.4.11:** `keel plan <finding-id> --copy` — copy plan to clipboard
-- **F1.4.12:** `keel init` — generate .keelrc with defaults
-- **F1.4.13:** `keel --help` — show all commands
+- **F1.4.7:** `prune scan` — run scan, output to stdout, exit
+- **F1.4.8:** `prune scan --json` — JSON output for tooling integration
+- **F1.4.9:** `prune scan --watch` — headless watch mode (logs changes)
+- **F1.4.10:** `prune plan <finding-id>` — output plan to stdout
+- **F1.4.11:** `prune plan <finding-id> --copy` — copy plan to clipboard
+- **F1.4.12:** `prune init` — generate .prunerc with defaults
+- **F1.4.13:** `prune --help` — show all commands
 
-**Design Principle:** Running `keel` with no args drops you into a guided workflow. Slash commands (`keel scan`, `keel plan`) are for automation and power users. The TUI is the primary interface for day-to-day use.
+**Design Principle:** Running `prune` with no args drops you into a guided workflow. Slash commands (`prune scan`, `prune plan`) are for automation and power users. The TUI is the primary interface for day-to-day use.
 
 #### F1.5: Refactor Plan Generation
 - **F1.5.1:** Generate structured markdown plan for selected finding
@@ -194,7 +194,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 
 #### F3.3: AI Agent Integration (Optional)
 - **F3.3.1:** Direct integration with Claude API (user provides key)
-- **F3.3.2:** Orchestrated fix: Keel sends plan, receives changes, validates
+- **F3.3.2:** Orchestrated fix: Prune sends plan, receives changes, validates
 - **F3.3.3:** Aider/Cursor plugin or CLI handoff
 - **F3.3.4:** MCP server mode for Claude Desktop integration
 
@@ -209,7 +209,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 #### F4.1: Team Features
 - **F4.1.1:** Shared goal configuration
 - **F4.1.2:** Export/import config for team consistency
-- **F4.1.3:** CI integration—run Keel in pipeline, fail on threshold
+- **F4.1.3:** CI integration—run Prune in pipeline, fail on threshold
 - **F4.1.4:** Trend dashboard for team leads
 
 #### F4.2: Corpus Expansion (Future)
@@ -244,7 +244,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 #### T1.4: Storage
 - **T1.4.1:** SQLite for structured data (files, symbols, relationships, findings)
 - **T1.4.2:** Lancedb for vector storage and similarity search
-- **T1.4.3:** All data stored in project directory (.keel/) or user config dir
+- **T1.4.3:** All data stored in project directory (.prune/) or user config dir
 - **T1.4.4:** Index format versioned for migrations
 
 #### T1.5: File Watching
@@ -267,7 +267,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 - **T2.2.4:** JSON output mode for scripting/integration
 
 #### T2.3: Configuration
-- **T2.3.1:** Config file: .keelrc (TOML) or keel.config.json
+- **T2.3.1:** Config file: .prunerc (TOML) or prune.config.json
 - **T2.3.2:** CLI flags override config file
 - **T2.3.3:** Environment variable support for CI contexts
 
@@ -279,7 +279,7 @@ You trust AI to write code. Prune tells you when that trust was misplaced, and g
 - **T3.1.3:** Native Rust integration via Tauri commands (no IPC overhead)
 
 #### T3.2: Rust Integration
-- **T3.2.1:** Keel core compiled directly into Tauri app (single binary)
+- **T3.2.1:** Prune core compiled directly into Tauri app (single binary)
 - **T3.2.2:** Shared Rust crate between CLI and Tauri app
 - **T3.2.3:** UI calls Rust functions directly via Tauri invoke API
 
@@ -456,7 +456,7 @@ interface UserData { id: string; name: string; email: string; }
 type UserInfo = { id: string; name: string; emailAddress: string }
 ```
 
-Keel flags: "3 types representing 'User' concept across 3 files"
+Prune flags: "3 types representing 'User' concept across 3 files"
 
 ### A2: Redundant Logic Detection
 
@@ -486,11 +486,11 @@ Keel flags: "3 types representing 'User' concept across 3 files"
 ## Appendix B: Refactor Plan Format
 
 ```markdown
-# Keel Refactor Plan
+# Prune Refactor Plan
 
 **Generated:** 2024-12-30T10:30:00Z
 **Finding ID:** sprawl-user-types-001
-**Keel Version:** 1.0.0
+**Prune Version:** 1.0.0
 
 ## Issue
 
@@ -566,20 +566,20 @@ interface UserProps {
 
 After refactoring, run:
 ```bash
-keel scan --finding sprawl-user-types-001
+prune scan --finding sprawl-user-types-001
 ```
 
 Expected result: Finding resolved or severity reduced.
 
 ---
-*Generated by Keel v1.0.0 — https://keel.dev*
+*Generated by Prune v1.0.0 — https://prune.dev*
 ```
 
 ---
 
 ## Appendix C: Competitive Landscape
 
-| Tool | Focus | Gap Keel Fills |
+| Tool | Focus | Gap Prune Fills |
 |------|-------|----------------|
 | ESLint | Syntax, style | No semantic patterns |
 | SonarQube | Bugs, security, complexity | No goal calibration, not AI-slop focused |
@@ -587,9 +587,9 @@ Expected result: Finding resolved or severity reduced.
 | CloneDR | Syntactic duplication | Misses semantic similarity |
 | Sourcegraph | Code search | Search, not analysis |
 | CodeScene | Behavioral analysis | Team/org focused, not refactor workflow |
-| Cursor/Aider | AI coding | Keel complements these, doesn't compete |
+| Cursor/Aider | AI coding | Prune complements these, doesn't compete |
 
-Keel's unique position: **Goal-calibrated semantic anti-pattern detection with AI-agent refactor integration.**
+Prune's unique position: **Goal-calibrated semantic anti-pattern detection with AI-agent refactor integration.**
 
 ---
 
