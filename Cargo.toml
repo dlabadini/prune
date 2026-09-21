@@ -68,7 +68,7 @@ name = "prune"
 path = "src/main.rs"
 
 [lib]
-name = "prune_core"
+name = "prune"
 path = "src/lib.rs"
 
 [dev-dependencies]

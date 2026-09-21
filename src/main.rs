@@ -8,7 +8,7 @@ mod tui;
 
 use clap::Parser;
 use cli::{Cli, Commands, LicenseAction};
-use prune_core::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan};
+use prune::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan};
 use std::io::{self};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -48,7 +48,7 @@ fn main() {
 fn cmd_mcp(root: &std::path::Path) -> io::Result<()> {
     let runtime = tokio::runtime::Runtime::new()?;
     runtime
-        .block_on(prune_core::mcp::serve(root))
+        .block_on(prune::mcp::serve(root))
         .map_err(|error| io::Error::other(error.to_string()))
 }
 
@@ -98,7 +98,7 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
                 println!(
                     "{} {}  {} — {}",
                     finding.pattern_type.tier().as_str(),
-                    prune_core::score::finding_outcome(finding).as_str(),
+                    prune::score::finding_outcome(finding).as_str(),
                     finding.pattern_type.display_name(),
                     finding.title
                 );
@@ -106,7 +106,7 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
                 for loc in &finding.locations {
                     println!("    {}:{}", loc.file, loc.start_line);
                 }
-                println!("    Next: {}", prune_core::score::next_line(finding));
+                println!("    Next: {}", prune::score::next_line(finding));
                 println!();
             }
         }

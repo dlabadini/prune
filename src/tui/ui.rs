@@ -1,9 +1,9 @@
 //! TUI rendering
 
 use super::app::{App, AppState};
-use prune_core::patterns::Tier;
-use prune_core::plan::RefactorPlan;
-use prune_core::score::{self, Outcome};
+use prune::patterns::Tier;
+use prune::plan::RefactorPlan;
+use prune::score::{self, Outcome};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

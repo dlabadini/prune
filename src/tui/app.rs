@@ -1,11 +1,11 @@
 //! TUI Application state and logic
 
 use arboard::Clipboard;
-use prune_core::analyzer::{Analyzer, AnalyzerError, ScanProgress, ScanResult};
-use prune_core::patterns::Finding;
-use prune_core::plan::RefactorPlan;
-use prune_core::score::{self, RepoScore};
-use prune_core::watcher::{FileWatcher, WatchEvent, WatchState};
+use prune::analyzer::{Analyzer, AnalyzerError, ScanProgress, ScanResult};
+use prune::patterns::Finding;
+use prune::plan::RefactorPlan;
+use prune::score::{self, RepoScore};
+use prune::watcher::{FileWatcher, WatchEvent, WatchState};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -100,7 +100,7 @@ impl App {
         let Some(mut analyzer) = self.analyzer.take() else {
             return;
         };
-        let model_ready = prune_core::embeddings::embedding_model_ready();
+        let model_ready = prune::embeddings::embedding_model_ready();
         self.set_status(if model_ready {
             "Scanning...".to_string()
         } else {
