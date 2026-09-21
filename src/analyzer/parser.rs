@@ -1,9 +1,17 @@
-//! Tree-sitter based parser for TypeScript/JavaScript
+//! Oxc parser and semantic index for TypeScript and JavaScript.
 
 use crate::db::SymbolKind;
-use tree_sitter::{Language, Node, Parser as TsParser, Tree};
+use oxc_allocator::Allocator;
+use oxc_ast::ast::{
+    BindingPattern, Declaration, ExportDefaultDeclarationKind, ImportDeclarationSpecifier,
+    ModuleExportName, Statement, VariableDeclarationKind,
+};
+use oxc_parser::Parser as OxcParser;
+use oxc_semantic::SemanticBuilder;
+use oxc_span::{GetSpan, SourceType};
+use std::path::Path;
 
-/// Parsed symbol from source code
+/// Parsed symbol from source code.
 #[derive(Debug, Clone)]
 pub struct ParsedSymbol {
     pub name: String,
@@ -11,384 +19,447 @@ pub struct ParsedSymbol {
     pub start_line: usize,
     pub end_line: usize,
     pub is_exported: bool,
+    pub is_default: bool,
     pub source_text: String,
 }
 
-/// Parsed import statement
+/// Parsed import or re-export.
 #[derive(Debug, Clone)]
 pub struct ParsedImport {
     pub target_path: String,
     pub imported_names: Vec<String>,
     pub is_type_only: bool,
+    pub is_reexport: bool,
+    pub import_all: bool,
+    pub line: usize,
 }
 
-/// Tree-sitter parser wrapper
-pub struct Parser {
-    ts_parser: TsParser,
-    typescript_lang: Language,
-    javascript_lang: Language,
+/// A use of a binding resolved by Oxc's semantic analyzer.
+#[derive(Debug, Clone)]
+pub struct LocalUse {
+    pub name: String,
+    pub decl_line: usize,
+    pub use_line: usize,
 }
 
-impl Parser {
-    pub fn new() -> Self {
-        let ts_parser = TsParser::new();
-        let typescript_lang = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
-        let javascript_lang = tree_sitter_javascript::LANGUAGE.into();
+/// Everything extracted from one source file.
+#[derive(Debug, Clone, Default)]
+pub struct ParsedFile {
+    pub symbols: Vec<ParsedSymbol>,
+    pub imports: Vec<ParsedImport>,
+    pub local_uses: Vec<LocalUse>,
+}
 
-        Self {
-            ts_parser,
-            typescript_lang,
-            javascript_lang,
-        }
-    }
+/// Parse a JS/TS source file with Oxc and resolve its bindings.
+pub fn parse_source(source: &str, extension: &str) -> ParsedFile {
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(Path::new(&format!("file.{extension}")))
+        .unwrap_or_else(|_| SourceType::default());
+    let parsed = OxcParser::new(&allocator, source, source_type).parse();
+    let program = parsed.program;
 
-    /// Parse source code and extract symbols
-    pub fn parse_symbols(&mut self, source: &str, extension: &str) -> Vec<ParsedSymbol> {
-        let language = self.get_language(extension);
-        self.ts_parser
-            .set_language(&language)
-            .expect("Error setting language");
+    let mut symbols = Vec::new();
+    let mut imports = Vec::new();
+    let mut export_aliases: Vec<(String, String)> = Vec::new();
 
-        let tree = match self.ts_parser.parse(source, None) {
-            Some(tree) => tree,
-            None => return Vec::new(),
-        };
-
-        let mut symbols = Vec::new();
-        self.extract_symbols(&tree, source, &mut symbols);
-        symbols
-    }
-
-    /// Parse source code and extract imports
-    pub fn parse_imports(&mut self, source: &str, extension: &str) -> Vec<ParsedImport> {
-        let language = self.get_language(extension);
-        self.ts_parser
-            .set_language(&language)
-            .expect("Error setting language");
-
-        let tree = match self.ts_parser.parse(source, None) {
-            Some(tree) => tree,
-            None => return Vec::new(),
-        };
-
-        let mut imports = Vec::new();
-        self.extract_imports(&tree, source, &mut imports);
-        imports
-    }
-
-    fn get_language(&self, extension: &str) -> Language {
-        match extension {
-            "ts" | "tsx" | "mts" | "cts" => self.typescript_lang.clone(),
-            _ => self.javascript_lang.clone(),
-        }
-    }
-
-    fn extract_symbols(&self, tree: &Tree, source: &str, symbols: &mut Vec<ParsedSymbol>) {
-        let root = tree.root_node();
-        self.visit_node(root, source, symbols, false);
-    }
-
-    fn visit_node(
-        &self,
-        node: Node,
-        source: &str,
-        symbols: &mut Vec<ParsedSymbol>,
-        is_exported: bool,
-    ) {
-        let kind = node.kind();
-
-        // Check for export statements
-        let mut exported = is_exported;
-        if kind == "export_statement" {
-            exported = true;
-        }
-
-        // Extract symbols based on node type
-        match kind {
-            "function_declaration" | "function" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::Function,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+    for stmt in &program.body {
+        match stmt {
+            Statement::ImportDeclaration(import) => {
+                imports.push(import_from(source, import, false));
             }
-            "arrow_function" => {
-                // Arrow functions assigned to variables
-                if let Some(parent) = node.parent() {
-                    if parent.kind() == "variable_declarator" {
-                        if let Some(name_node) = parent.child_by_field_name("name") {
-                            let name = self.get_node_text(&name_node, source);
-                            symbols.push(ParsedSymbol {
-                                name,
-                                kind: SymbolKind::Function,
-                                start_line: parent.start_position().row + 1,
-                                end_line: node.end_position().row + 1,
-                                is_exported: exported,
-                                source_text: self
-                                    .get_node_text(&parent.parent().unwrap_or(parent), source),
-                            });
-                        }
+            Statement::ExportAllDeclaration(export) => {
+                imports.push(ParsedImport {
+                    target_path: export.source.value.to_string(),
+                    imported_names: Vec::new(),
+                    is_type_only: false,
+                    is_reexport: true,
+                    import_all: true,
+                    line: line_at(source, export.span.start),
+                });
+            }
+            Statement::ExportFromDeclaration(export) => {
+                let names = export
+                    .specifiers
+                    .iter()
+                    .map(|spec| export_name(&spec.exported))
+                    .filter(|name| !name.is_empty())
+                    .collect::<Vec<_>>();
+                imports.push(ParsedImport {
+                    target_path: export.source.value.to_string(),
+                    imported_names: names,
+                    is_type_only: false,
+                    is_reexport: true,
+                    import_all: false,
+                    line: line_at(source, export.span.start),
+                });
+            }
+            Statement::ExportDefaultDeclaration(export) => {
+                push_default_export(source, &export.declaration, &mut symbols);
+            }
+            Statement::ExportDeclaration(export) => {
+                push_declaration(source, &export.declaration, true, false, &mut symbols);
+            }
+            Statement::ExportNamedDeclaration(export) => {
+                for spec in &export.specifiers {
+                    let local = export_name(&spec.local);
+                    let exported = export_name(&spec.exported);
+                    if !local.is_empty() {
+                        export_aliases.push((local, exported));
                     }
                 }
             }
-            "class_declaration" | "class" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::Class,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+            Statement::FunctionDeclaration(func) => {
+                push_function(source, func, false, false, &mut symbols);
             }
-            "interface_declaration" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::Interface,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+            Statement::ClassDeclaration(class) => {
+                push_class(source, class, false, false, &mut symbols);
             }
-            "type_alias_declaration" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::TypeAlias,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+            Statement::TSInterfaceDeclaration(interface) => {
+                push_named(
+                    source,
+                    interface.id.name.as_str(),
+                    SymbolKind::Interface,
+                    interface.span,
+                    false,
+                    false,
+                    &mut symbols,
+                );
             }
-            "enum_declaration" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::Enum,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+            Statement::TSTypeAliasDeclaration(alias) => {
+                push_named(
+                    source,
+                    alias.id.name.as_str(),
+                    SymbolKind::TypeAlias,
+                    alias.span,
+                    false,
+                    false,
+                    &mut symbols,
+                );
             }
-            "lexical_declaration" | "variable_declaration" => {
-                // Only track exported variables at module level
-                if exported {
-                    for i in 0..node.named_child_count() {
-                        if let Some(child) = node.named_child(i) {
-                            if child.kind() == "variable_declarator" {
-                                if let Some(name_node) = child.child_by_field_name("name") {
-                                    let name = self.get_node_text(&name_node, source);
-                                    // Skip if this is an arrow function (handled above)
-                                    let is_function = child.named_child_count() > 1
-                                        && child
-                                            .named_child(1)
-                                            .map(|n| n.kind() == "arrow_function")
-                                            .unwrap_or(false);
-
-                                    if !is_function {
-                                        symbols.push(ParsedSymbol {
-                                            name,
-                                            kind: SymbolKind::Variable,
-                                            start_line: node.start_position().row + 1,
-                                            end_line: node.end_position().row + 1,
-                                            is_exported: true,
-                                            source_text: self.get_node_text(&node, source),
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+            Statement::TSEnumDeclaration(enum_decl) => {
+                push_named(
+                    source,
+                    enum_decl.id.name.as_str(),
+                    SymbolKind::Enum,
+                    enum_decl.span,
+                    false,
+                    false,
+                    &mut symbols,
+                );
             }
-            "module" | "namespace_declaration" => {
-                if let Some(name) = self.get_name_child(&node, source) {
-                    symbols.push(ParsedSymbol {
-                        name,
-                        kind: SymbolKind::Namespace,
-                        start_line: node.start_position().row + 1,
-                        end_line: node.end_position().row + 1,
-                        is_exported: exported,
-                        source_text: self.get_node_text(&node, source),
-                    });
-                }
+            Statement::VariableDeclaration(decl) => {
+                push_variables(source, decl, false, &mut symbols);
             }
             _ => {}
         }
+    }
 
-        // Recurse into children
-        for i in 0..node.named_child_count() {
-            if let Some(child) = node.named_child(i) {
-                self.visit_node(child, source, symbols, exported);
+    for (local, exported) in &export_aliases {
+        if let Some(symbol) = symbols.iter_mut().find(|symbol| symbol.name == *local) {
+            symbol.is_exported = true;
+            if exported != local && !exported.is_empty() {
+                symbol.name = exported.clone();
             }
         }
     }
 
-    fn extract_imports(&self, tree: &Tree, source: &str, imports: &mut Vec<ParsedImport>) {
-        let root = tree.root_node();
-        self.visit_node_for_imports(root, source, imports);
-    }
-
-    fn visit_node_for_imports(&self, node: Node, source: &str, imports: &mut Vec<ParsedImport>) {
-        let kind = node.kind();
-
-        if kind == "import_statement" {
-            if let Some(import) = self.parse_import_statement(&node, source) {
-                imports.push(import);
-            }
-        }
-
-        // Also handle export ... from statements (re-exports)
-        if kind == "export_statement" {
-            if let Some(source_node) = node.child_by_field_name("source") {
-                let target_path = self.get_string_value(&source_node, source);
-                let mut imported_names = Vec::new();
-
-                // Get exported names
-                for i in 0..node.named_child_count() {
-                    if let Some(child) = node.named_child(i) {
-                        if child.kind() == "export_clause" {
-                            for j in 0..child.named_child_count() {
-                                if let Some(spec) = child.named_child(j) {
-                                    if spec.kind() == "export_specifier" {
-                                        if let Some(name_node) = spec.child_by_field_name("name") {
-                                            imported_names
-                                                .push(self.get_node_text(&name_node, source));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !target_path.is_empty() {
-                    imports.push(ParsedImport {
-                        target_path,
-                        imported_names,
-                        is_type_only: false,
-                    });
-                }
-            }
-        }
-
-        // Recurse
-        for i in 0..node.named_child_count() {
-            if let Some(child) = node.named_child(i) {
-                self.visit_node_for_imports(child, source, imports);
+    let semantic = SemanticBuilder::new()
+        .with_check_syntax_error(false)
+        .with_build_nodes(true)
+        .build(&program);
+    let scoping = semantic.semantic.scoping();
+    let nodes = semantic.semantic.nodes();
+    let mut local_uses = Vec::new();
+    for symbol_id in scoping.symbol_ids() {
+        let name = scoping.symbol_name(symbol_id).to_string();
+        let decl_line = line_at(source, scoping.symbol_span(symbol_id).start);
+        for reference in scoping.get_resolved_references(symbol_id) {
+            let use_line = line_at(source, nodes.kind(reference.node_id()).span().start);
+            if use_line != decl_line {
+                local_uses.push(LocalUse {
+                    name: name.clone(),
+                    decl_line,
+                    use_line,
+                });
             }
         }
     }
 
-    fn parse_import_statement(&self, node: &Node, source: &str) -> Option<ParsedImport> {
-        let mut target_path = String::new();
-        let mut imported_names = Vec::new();
-        let mut is_type_only = false;
-
-        // Check if this is a type-only import
-        let node_text = self.get_node_text(node, source);
-        if node_text.contains("import type") {
-            is_type_only = true;
-        }
-
-        // Get the source path
-        if let Some(source_node) = node.child_by_field_name("source") {
-            target_path = self.get_string_value(&source_node, source);
-        }
-
-        // Get imported names
-        for i in 0..node.named_child_count() {
-            if let Some(child) = node.named_child(i) {
-                if child.kind() == "import_clause" {
-                    // Handle default import and named imports
-                    for j in 0..child.named_child_count() {
-                        if let Some(import_child) = child.named_child(j) {
-                            match import_child.kind() {
-                                "identifier" => {
-                                    imported_names.push(self.get_node_text(&import_child, source));
-                                }
-                                "named_imports" => {
-                                    for k in 0..import_child.named_child_count() {
-                                        if let Some(spec) = import_child.named_child(k) {
-                                            if spec.kind() == "import_specifier" {
-                                                if let Some(name_node) =
-                                                    spec.child_by_field_name("name")
-                                                {
-                                                    imported_names.push(
-                                                        self.get_node_text(&name_node, source),
-                                                    );
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                "namespace_import" => {
-                                    // import * as name
-                                    if let Some(name_node) =
-                                        import_child.child_by_field_name("name")
-                                    {
-                                        imported_names.push(format!(
-                                            "* as {}",
-                                            self.get_node_text(&name_node, source)
-                                        ));
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if target_path.is_empty() {
-            return None;
-        }
-
-        Some(ParsedImport {
-            target_path,
-            imported_names,
-            is_type_only,
-        })
-    }
-
-    fn get_name_child(&self, node: &Node, source: &str) -> Option<String> {
-        node.child_by_field_name("name")
-            .map(|n| self.get_node_text(&n, source))
-    }
-
-    fn get_node_text(&self, node: &Node, source: &str) -> String {
-        let start = node.start_byte();
-        let end = node.end_byte();
-        source.get(start..end).unwrap_or("").to_string()
-    }
-
-    fn get_string_value(&self, node: &Node, source: &str) -> String {
-        let text = self.get_node_text(node, source);
-        // Remove quotes
-        text.trim_matches(|c| c == '"' || c == '\'' || c == '`')
-            .to_string()
+    ParsedFile {
+        symbols,
+        imports,
+        local_uses,
     }
 }
 
-impl Default for Parser {
-    fn default() -> Self {
-        Self::new()
+fn import_from(
+    source: &str,
+    import: &oxc_ast::ast::ImportDeclaration<'_>,
+    is_reexport: bool,
+) -> ParsedImport {
+    let mut names = Vec::new();
+    let mut import_all = false;
+    if let Some(specifiers) = &import.specifiers {
+        for spec in specifiers {
+            match spec {
+                ImportDeclarationSpecifier::ImportSpecifier(spec) => {
+                    names.push(export_name(&spec.imported));
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                    names.push("default".to_string());
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                    import_all = true;
+                }
+            }
+        }
     }
+    ParsedImport {
+        target_path: import.source.value.to_string(),
+        imported_names: names,
+        is_type_only: false,
+        is_reexport,
+        import_all,
+        line: line_at(source, import.span.start),
+    }
+}
+
+fn push_default_export(
+    source: &str,
+    declaration: &ExportDefaultDeclarationKind<'_>,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    match declaration {
+        ExportDefaultDeclarationKind::FunctionDeclaration(func) => {
+            push_function(source, func, true, true, symbols);
+        }
+        ExportDefaultDeclarationKind::ClassDeclaration(class) => {
+            push_class(source, class, true, true, symbols);
+        }
+        ExportDefaultDeclarationKind::TSInterfaceDeclaration(interface) => {
+            push_named(
+                source,
+                interface.id.name.as_str(),
+                SymbolKind::Interface,
+                interface.span,
+                true,
+                true,
+                symbols,
+            );
+        }
+        _ => {
+            let span = declaration.span();
+            push_named(
+                source,
+                "default",
+                SymbolKind::Variable,
+                span,
+                true,
+                true,
+                symbols,
+            );
+        }
+    }
+}
+
+fn push_declaration(
+    source: &str,
+    declaration: &Declaration<'_>,
+    is_exported: bool,
+    is_default: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    match declaration {
+        Declaration::FunctionDeclaration(func) => {
+            push_function(source, func, is_exported, is_default, symbols);
+        }
+        Declaration::ClassDeclaration(class) => {
+            push_class(source, class, is_exported, is_default, symbols);
+        }
+        Declaration::VariableDeclaration(decl) => {
+            push_variables_exported(source, decl, is_exported, is_default, symbols);
+        }
+        Declaration::TSInterfaceDeclaration(interface) => {
+            push_named(
+                source,
+                interface.id.name.as_str(),
+                SymbolKind::Interface,
+                interface.span,
+                is_exported,
+                is_default,
+                symbols,
+            );
+        }
+        Declaration::TSTypeAliasDeclaration(alias) => {
+            push_named(
+                source,
+                alias.id.name.as_str(),
+                SymbolKind::TypeAlias,
+                alias.span,
+                is_exported,
+                is_default,
+                symbols,
+            );
+        }
+        Declaration::TSEnumDeclaration(enum_decl) => {
+            push_named(
+                source,
+                enum_decl.id.name.as_str(),
+                SymbolKind::Enum,
+                enum_decl.span,
+                is_exported,
+                is_default,
+                symbols,
+            );
+        }
+        _ => {}
+    }
+}
+
+fn push_function(
+    source: &str,
+    func: &oxc_ast::ast::Function<'_>,
+    is_exported: bool,
+    is_default: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    let Some(id) = &func.id else {
+        if is_default {
+            push_named(
+                source,
+                "default",
+                SymbolKind::Function,
+                func.span,
+                true,
+                true,
+                symbols,
+            );
+        }
+        return;
+    };
+    push_named(
+        source,
+        id.name.as_str(),
+        SymbolKind::Function,
+        func.span,
+        is_exported,
+        is_default,
+        symbols,
+    );
+}
+
+fn push_class(
+    source: &str,
+    class: &oxc_ast::ast::Class<'_>,
+    is_exported: bool,
+    is_default: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    let Some(id) = &class.id else {
+        return;
+    };
+    push_named(
+        source,
+        id.name.as_str(),
+        SymbolKind::Class,
+        class.span,
+        is_exported,
+        is_default,
+        symbols,
+    );
+}
+
+fn push_variables(
+    source: &str,
+    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    is_exported: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    push_variables_exported(source, decl, is_exported, false, symbols);
+}
+
+fn push_variables_exported(
+    source: &str,
+    decl: &oxc_ast::ast::VariableDeclaration<'_>,
+    is_exported: bool,
+    is_default: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    let kind = match decl.kind {
+        VariableDeclarationKind::Var
+        | VariableDeclarationKind::Let
+        | VariableDeclarationKind::Const => SymbolKind::Variable,
+        _ => SymbolKind::Variable,
+    };
+    for declarator in &decl.declarations {
+        if let Some(name) = binding_name(&declarator.id) {
+            // Arrow functions and function expressions are still callable units.
+            let symbol_kind = if declarator
+                .init
+                .as_ref()
+                .is_some_and(|expr| expr.is_function())
+            {
+                SymbolKind::Function
+            } else {
+                kind
+            };
+            push_named(
+                source,
+                &name,
+                symbol_kind,
+                declarator.span,
+                is_exported,
+                is_default,
+                symbols,
+            );
+        }
+    }
+}
+
+fn binding_name(pattern: &BindingPattern<'_>) -> Option<String> {
+    match pattern {
+        BindingPattern::BindingIdentifier(id) => Some(id.name.as_str().to_string()),
+        _ => None,
+    }
+}
+
+fn push_named(
+    source: &str,
+    name: &str,
+    kind: SymbolKind,
+    span: oxc_span::Span,
+    is_exported: bool,
+    is_default: bool,
+    symbols: &mut Vec<ParsedSymbol>,
+) {
+    if name.is_empty() {
+        return;
+    }
+    let start = span.start as usize;
+    let end = (span.end as usize).min(source.len());
+    let text = source.get(start..end).unwrap_or("").to_string();
+    symbols.push(ParsedSymbol {
+        name: name.to_string(),
+        kind,
+        start_line: line_at(source, span.start),
+        end_line: line_at(source, span.end.saturating_sub(1)),
+        is_exported,
+        is_default,
+        source_text: text,
+    });
+}
+
+fn export_name(name: &ModuleExportName<'_>) -> String {
+    match name {
+        ModuleExportName::IdentifierName(id) => id.name.as_str().to_string(),
+        ModuleExportName::IdentifierReference(id) => id.name.as_str().to_string(),
+        ModuleExportName::StringLiteral(lit) => lit.value.to_string(),
+    }
+}
+
+fn line_at(source: &str, offset: u32) -> usize {
+    let end = (offset as usize).min(source.len());
+    source[..end].bytes().filter(|byte| *byte == b'\n').count() + 1
 }
 
 #[cfg(test)]
@@ -396,51 +467,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_function() {
-        let mut parser = Parser::new();
+    fn parses_exports_imports_and_references() {
         let source = r#"
-            export function greet(name: string): string {
-                return `Hello, ${name}!`;
-            }
-        "#;
+import { helper } from "./helper";
 
-        let symbols = parser.parse_symbols(source, "ts");
-        assert_eq!(symbols.len(), 1);
-        assert_eq!(symbols[0].name, "greet");
-        assert_eq!(symbols[0].kind, SymbolKind::Function);
-        assert!(symbols[0].is_exported);
-    }
+export function used(value: string) {
+    return helper(value);
+}
 
-    #[test]
-    fn test_parse_interface() {
-        let mut parser = Parser::new();
-        let source = r#"
-            export interface User {
-                id: string;
-                name: string;
-                email: string;
-            }
-        "#;
-
-        let symbols = parser.parse_symbols(source, "ts");
-        assert_eq!(symbols.len(), 1);
-        assert_eq!(symbols[0].name, "User");
-        assert_eq!(symbols[0].kind, SymbolKind::Interface);
-    }
-
-    #[test]
-    fn test_parse_imports() {
-        let mut parser = Parser::new();
-        let source = r#"
-            import { useState, useEffect } from 'react';
-            import type { User } from './types';
-            import * as utils from './utils';
-        "#;
-
-        let imports = parser.parse_imports(source, "ts");
-        assert_eq!(imports.len(), 3);
-        assert_eq!(imports[0].target_path, "react");
-        assert_eq!(imports[0].imported_names, vec!["useState", "useEffect"]);
-        assert!(imports[1].is_type_only);
+export function unused() {
+    return 1;
+}
+"#;
+        let parsed = parse_source(source, "ts");
+        let used = parsed
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "used")
+            .unwrap();
+        assert!(used.is_exported);
+        assert_eq!(used.kind, SymbolKind::Function);
+        assert!(parsed.symbols.iter().any(|symbol| symbol.name == "unused"));
+        assert_eq!(parsed.imports.len(), 1);
+        assert_eq!(parsed.imports[0].imported_names, vec!["helper".to_string()]);
+        assert!(parsed
+            .local_uses
+            .iter()
+            .any(|use_site| use_site.name == "helper"));
     }
 }

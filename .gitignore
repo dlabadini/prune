@@ -1,6 +1,8 @@
 # Rust
 /target/
 Cargo.lock
+.fastembed_cache/
+.prune/
 
 # IDE
 .idea/

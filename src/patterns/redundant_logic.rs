@@ -102,7 +102,7 @@ impl PatternDetector for RedundantLogicDetector {
 fn find_similar_pairs(
     functions: &[Symbol],
     threshold: f32,
-    _db: &Database,
+    db: &Database,
 ) -> Vec<(Symbol, Symbol, f32)> {
     let mut pairs = Vec::new();
 
@@ -125,7 +125,7 @@ fn find_similar_pairs(
                 continue;
             }
 
-            let similarity = calculate_function_similarity(a, b);
+            let similarity = combined_similarity(a, b, db);
             if similarity >= threshold {
                 pairs.push((a.clone(), b.clone(), similarity));
             }
@@ -139,6 +139,21 @@ fn find_similar_pairs(
     pairs.truncate(20);
 
     pairs
+}
+
+fn combined_similarity(a: &Symbol, b: &Symbol, db: &Database) -> f32 {
+    let textual = calculate_function_similarity(a, b);
+    let embedded = db
+        .nearest_ids(a.id, 16)
+        .ok()
+        .and_then(|neighbors| {
+            neighbors
+                .into_iter()
+                .find(|(id, _)| *id == b.id)
+                .map(|(_, score)| score)
+        })
+        .unwrap_or(0.0);
+    textual.max(embedded)
 }
 
 fn calculate_function_similarity(a: &Symbol, b: &Symbol) -> f32 {

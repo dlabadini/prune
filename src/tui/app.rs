@@ -42,7 +42,10 @@ impl FindingFilter {
             FindingFilter::Pattern(PatternType::DeadExports) => {
                 FindingFilter::Pattern(PatternType::OverAbstraction)
             }
-            FindingFilter::Pattern(PatternType::OverAbstraction) => FindingFilter::All,
+            FindingFilter::Pattern(PatternType::OverAbstraction) => {
+                FindingFilter::Pattern(PatternType::ImportCycle)
+            }
+            FindingFilter::Pattern(PatternType::ImportCycle) => FindingFilter::All,
         }
     }
 

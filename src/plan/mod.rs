@@ -175,6 +175,12 @@ fn generate_acceptance_criteria(finding: &Finding) -> String {
             criteria.push("- [ ] Code still testable (verify test coverage)".to_string());
             criteria.push("- [ ] Call sites simplified".to_string());
         }
+        PatternType::ImportCycle => {
+            criteria.push("- [ ] Cycle broken by a one-way dependency".to_string());
+            criteria
+                .push("- [ ] Shared symbols moved to a module both sides can import".to_string());
+            criteria.push("- [ ] No remaining import cycle among these files".to_string());
+        }
     }
 
     // Add related concepts if any

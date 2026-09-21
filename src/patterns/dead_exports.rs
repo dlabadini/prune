@@ -58,7 +58,7 @@ impl PatternDetector for DeadExportsDetector {
             }
 
             let severity = calculate_severity(symbols.len());
-            let confidence = 0.75; // Lower confidence as these might be intentionally public
+            let confidence = 0.9;
 
             let symbol_names: Vec<_> = symbols.iter().map(|s| s.name.clone()).collect();
             let title = format!(
@@ -68,7 +68,7 @@ impl PatternDetector for DeadExportsDetector {
             );
 
             let description = format!(
-                "These exported symbols have no internal references: {}",
+                "These exported symbols have no references from other files: {}",
                 symbol_names.join(", ")
             );
 

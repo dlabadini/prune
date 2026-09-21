@@ -6,9 +6,13 @@
 pub mod analyzer;
 pub mod config;
 pub mod db;
+pub mod embeddings;
+pub mod gitinfo;
 pub mod license;
+pub mod mcp;
 pub mod patterns;
 pub mod plan;
+pub mod structural;
 pub mod watcher;
 
 pub use analyzer::{Analyzer, AnalyzerError, ScanResult};

@@ -35,6 +35,7 @@ fn main() {
         }) => cmd_plan(&root, &finding_id, copy, output),
         Some(Commands::Init { force }) => cmd_init(&root, force),
         Some(Commands::Config) => cmd_config(&root),
+        Some(Commands::Mcp) => cmd_mcp(&root),
         Some(Commands::License { action }) => cmd_license(action),
     };
 
@@ -42,6 +43,13 @@ fn main() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
+}
+
+fn cmd_mcp(root: &std::path::Path) -> io::Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime
+        .block_on(prune_core::mcp::serve(root))
+        .map_err(|error| io::Error::other(error.to_string()))
 }
 
 fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {

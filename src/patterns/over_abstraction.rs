@@ -25,7 +25,42 @@ impl PatternDetector for OverAbstractionDetector {
         // 2. Wrapper functions that just call another function
         // 3. Factory functions that always return the same type
 
-        // Check for wrapper functions
+        let mut wrapped_names = std::collections::HashSet::new();
+        if let Ok(notes) = db.structural_notes("wrapper") {
+            for note in notes {
+                wrapped_names.insert(note.name.clone());
+                let title = format!("Wrapper function: {}", note.name);
+                let description = format!(
+                    "`{}` matches a pass-through wrapper around `{}`.",
+                    note.name,
+                    if note.detail.is_empty() {
+                        "another function"
+                    } else {
+                        &note.detail
+                    }
+                );
+                let finding = Finding::new(
+                    PatternType::OverAbstraction,
+                    Severity::Low,
+                    0.82,
+                    title,
+                    description,
+                )
+                .with_rationale(
+                    "ast-grep matched a function whose body only forwards to another call."
+                        .to_string(),
+                )
+                .with_locations(vec![Location::new(note.file_path, note.line, note.line)
+                    .with_context(format!("Wraps {}", note.detail))])
+                .with_suggested_fix(
+                    "Inline the wrapper or keep it only when it adds a real boundary.".to_string(),
+                )
+                .with_related_concepts(vec![note.name, note.detail]);
+                findings.push(finding);
+            }
+        }
+
+        // Check for wrapper functions the structural rule did not name.
         for file in &all_files {
             let symbols = match db.get_file_symbols(file.id) {
                 Ok(syms) => syms,
@@ -33,7 +68,7 @@ impl PatternDetector for OverAbstractionDetector {
             };
 
             for symbol in &symbols {
-                if symbol.kind != SymbolKind::Function {
+                if symbol.kind != SymbolKind::Function || wrapped_names.contains(&symbol.name) {
                     continue;
                 }
 

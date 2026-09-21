@@ -54,6 +54,9 @@ pub enum Commands {
     /// Show configuration
     Config,
 
+    /// Serve findings and refactor plans over MCP stdio
+    Mcp,
+
     /// Manage license
     License {
         #[command(subcommand)]

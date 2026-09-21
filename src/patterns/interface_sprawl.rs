@@ -103,7 +103,7 @@ impl PatternDetector for InterfaceSprawlDetector {
     }
 }
 
-fn find_similar_clusters(symbols: &[Symbol], threshold: f32, _db: &Database) -> Vec<Vec<Symbol>> {
+fn find_similar_clusters(symbols: &[Symbol], threshold: f32, db: &Database) -> Vec<Vec<Symbol>> {
     let mut clusters: Vec<Vec<Symbol>> = Vec::new();
     let mut used: std::collections::HashSet<i64> = std::collections::HashSet::new();
 
@@ -120,7 +120,20 @@ fn find_similar_clusters(symbols: &[Symbol], threshold: f32, _db: &Database) -> 
                 continue;
             }
 
-            let similarity = calculate_type_similarity(symbol, other);
+            let similarity = {
+                let textual = calculate_type_similarity(symbol, other);
+                let embedded = db
+                    .nearest_ids(symbol.id, 16)
+                    .ok()
+                    .and_then(|neighbors| {
+                        neighbors
+                            .into_iter()
+                            .find(|(id, _)| *id == other.id)
+                            .map(|(_, score)| score)
+                    })
+                    .unwrap_or(0.0);
+                textual.max(embedded)
+            };
             if similarity >= threshold {
                 cluster.push(other.clone());
                 used.insert(other.id);

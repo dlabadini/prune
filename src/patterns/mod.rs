@@ -3,6 +3,7 @@
 mod barrel_bloat;
 mod dead_exports;
 mod god_file;
+mod import_cycle;
 mod interface_sprawl;
 mod over_abstraction;
 mod redundant_logic;
@@ -10,6 +11,7 @@ mod redundant_logic;
 pub use barrel_bloat::BarrelBloatDetector;
 pub use dead_exports::DeadExportsDetector;
 pub use god_file::GodFileDetector;
+pub use import_cycle::ImportCycleDetector;
 pub use interface_sprawl::InterfaceSprawlDetector;
 pub use over_abstraction::OverAbstractionDetector;
 pub use redundant_logic::RedundantLogicDetector;
@@ -92,6 +94,7 @@ pub enum PatternType {
     BarrelBloat,
     DeadExports,
     OverAbstraction,
+    ImportCycle,
 }
 
 impl PatternType {
@@ -103,6 +106,7 @@ impl PatternType {
             PatternType::BarrelBloat => "barrel_bloat",
             PatternType::DeadExports => "dead_exports",
             PatternType::OverAbstraction => "over_abstraction",
+            PatternType::ImportCycle => "import_cycle",
         }
     }
 
@@ -114,6 +118,7 @@ impl PatternType {
             PatternType::BarrelBloat => "Barrel Bloat",
             PatternType::DeadExports => "Dead Exports",
             PatternType::OverAbstraction => "Over-Abstraction",
+            PatternType::ImportCycle => "Import Cycle",
         }
     }
 
@@ -127,6 +132,7 @@ impl PatternType {
             PatternType::BarrelBloat => "Index file re-exporting too many modules",
             PatternType::DeadExports => "Exported symbols with no internal consumers",
             PatternType::OverAbstraction => "Layers of indirection with single implementations",
+            PatternType::ImportCycle => "Modules that import each other",
         }
     }
 
@@ -138,6 +144,7 @@ impl PatternType {
             PatternType::BarrelBloat,
             PatternType::DeadExports,
             PatternType::OverAbstraction,
+            PatternType::ImportCycle,
         ]
     }
 }
@@ -253,6 +260,7 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
         Box::new(InterfaceSprawlDetector),
         Box::new(RedundantLogicDetector),
         Box::new(OverAbstractionDetector),
+        Box::new(ImportCycleDetector),
     ];
 
     let mut all_findings = Vec::new();

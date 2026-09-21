@@ -3,8 +3,9 @@
 mod indexer;
 mod parser;
 
+use oxc_resolver::{ResolveOptions, Resolver, TsconfigDiscovery};
+
 pub use indexer::Indexer;
-pub use parser::Parser;
 
 use crate::config::Config;
 use crate::db::Database;
@@ -43,6 +44,7 @@ pub struct Analyzer {
     config: Config,
     db: Database,
     indexer: Indexer,
+    resolver: Resolver,
 }
 
 impl Analyzer {
@@ -51,12 +53,14 @@ impl Analyzer {
         let config = Config::find_and_load(root).unwrap_or_default();
         let db = Database::open_for_project(root)?;
         let indexer = Indexer::new();
+        let resolver = project_resolver();
 
         Ok(Self {
             root: root.to_path_buf(),
             config,
             db,
             indexer,
+            resolver,
         })
     }
 
@@ -64,12 +68,14 @@ impl Analyzer {
     pub fn with_config(root: &Path, config: Config) -> Result<Self, AnalyzerError> {
         let db = Database::open_for_project(root)?;
         let indexer = Indexer::new();
+        let resolver = project_resolver();
 
         Ok(Self {
             root: root.to_path_buf(),
             config,
             db,
             indexer,
+            resolver,
         })
     }
 
@@ -110,8 +116,11 @@ impl Analyzer {
             }
         }
 
+        self.finalize_index()?;
+
         // Run pattern detection
-        let findings = run_all_detectors(&self.db, &self.config);
+        let mut findings = run_all_detectors(&self.db, &self.config);
+        crate::gitinfo::annotate_findings(&self.root, &mut findings);
 
         let stats = self.db.get_stats()?;
 
@@ -138,6 +147,7 @@ impl Analyzer {
         let hash = calculate_hash(&content);
 
         self.index_file(file_path, &content, &hash)?;
+        self.finalize_index()?;
         Ok(())
     }
 
@@ -207,10 +217,9 @@ impl Analyzer {
         // Parse and extract symbols
         let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        let symbols = self.indexer.parse_file(content, ext)?;
+        let indexed = self.indexer.index_source(content, ext)?;
 
-        // Insert symbols
-        for symbol in symbols {
+        for symbol in indexed.parsed.symbols {
             self.db.insert_symbol(
                 file_id,
                 &symbol.name,
@@ -218,36 +227,115 @@ impl Analyzer {
                 symbol.start_line,
                 symbol.end_line,
                 symbol.is_exported,
+                symbol.is_default,
                 &symbol.source_text,
             )?;
         }
 
-        // Parse and extract imports
-        let imports = self.indexer.parse_imports(content, ext)?;
-
-        for import in imports {
-            // Try to resolve target file
-            let target_file_id = if import.target_path.starts_with('.') {
-                // Relative import - try to resolve
-                let resolved = resolve_import(&self.root, &rel_path, &import.target_path);
-                if let Some(resolved_path) = resolved {
-                    self.db.get_file_id(&resolved_path)?
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
+        for import in indexed.parsed.imports {
             self.db.insert_import(
                 file_id,
-                target_file_id,
+                None,
                 &import.target_path,
                 &import.imported_names,
                 import.is_type_only,
+                import.is_reexport,
+                import.import_all,
+                import.line,
             )?;
         }
 
+        for hit in indexed.structural {
+            self.db
+                .insert_structural_note(file_id, hit.kind, &hit.name, hit.line, &hit.detail)?;
+        }
+
+        for use_site in indexed.parsed.local_uses {
+            if let Some(symbol_id) =
+                self.db
+                    .find_symbol_at(file_id, &use_site.name, use_site.decl_line)?
+            {
+                self.db
+                    .insert_reference(symbol_id, file_id, use_site.use_line)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Resolve imports, record cross-file references, and refresh embeddings.
+    fn finalize_index(&mut self) -> Result<(), AnalyzerError> {
+        self.db.clear_refs()?;
+        let edges = self.db.import_edges()?;
+        for edge in edges {
+            let absolute = self.root.join(&edge.source_path);
+            let Ok(resolved) = self.resolver.resolve_file(&absolute, &edge.specifier) else {
+                continue;
+            };
+            let full = resolved.full_path();
+            let Some(relative) = full
+                .strip_prefix(&self.root)
+                .ok()
+                .map(|path| path.to_string_lossy().replace('\\', "/"))
+            else {
+                continue;
+            };
+            let Some(target_id) = self.db.get_file_id(&relative)? else {
+                continue;
+            };
+            self.db.set_import_target(edge.id, target_id)?;
+
+            let symbol_ids = if edge.import_all {
+                self.db.exported_symbol_ids(target_id)?
+            } else {
+                let mut ids = Vec::new();
+                for name in &edge.imported_names {
+                    if let Some(id) = self.db.find_export(target_id, name)? {
+                        ids.push(id);
+                    }
+                }
+                ids
+            };
+            for symbol_id in symbol_ids {
+                self.db
+                    .insert_reference(symbol_id, edge.source_file_id, edge.line)?;
+            }
+        }
+
+        self.embed_symbols()?;
+        Ok(())
+    }
+
+    fn embed_symbols(&self) -> Result<(), AnalyzerError> {
+        let symbols = self.db.symbols_for_embedding()?;
+        let mut missing_ids = Vec::new();
+        let mut missing_text = Vec::new();
+        let mut missing_keys = Vec::new();
+        for (id, source) in symbols {
+            let clipped: String = source.chars().take(1500).collect();
+            if clipped.trim().is_empty() {
+                continue;
+            }
+            let key = crate::embeddings::content_key(&clipped);
+            if let Some(vector) = self.db.cached_embedding(&key)? {
+                if self.db.store_embedding(id, &key, &vector).is_err() {
+                    continue;
+                }
+            } else {
+                missing_ids.push(id);
+                missing_text.push(clipped);
+                missing_keys.push(key);
+            }
+        }
+        if missing_text.is_empty() {
+            return Ok(());
+        }
+        let Some(vectors) = crate::embeddings::embed_texts(&missing_text) else {
+            return Ok(());
+        };
+        for ((id, key), vector) in missing_ids.iter().zip(missing_keys).zip(vectors) {
+            let _ = self.db.store_embedding(*id, &key, &vector);
+        }
         Ok(())
     }
 
@@ -332,31 +420,32 @@ fn glob_match(pattern: &str, path: &str) -> bool {
     path.contains(pattern)
 }
 
-fn resolve_import(root: &Path, source_file: &str, import_path: &str) -> Option<String> {
-    let source_dir = Path::new(source_file).parent()?;
-    let resolved = source_dir.join(import_path);
-
-    // Try common extensions
-    let extensions = ["ts", "tsx", "js", "jsx", "mts", "mjs"];
-
-    for ext in extensions {
-        let with_ext = resolved.with_extension(ext);
-        let full_path = root.join(&with_ext);
-        if full_path.exists() {
-            return Some(with_ext.to_string_lossy().to_string());
-        }
-    }
-
-    // Try index files
-    for ext in extensions {
-        let index_file = resolved.join(format!("index.{}", ext));
-        let full_path = root.join(&index_file);
-        if full_path.exists() {
-            return Some(index_file.to_string_lossy().to_string());
-        }
-    }
-
-    None
+fn project_resolver() -> Resolver {
+    Resolver::new(ResolveOptions {
+        extensions: vec![
+            ".ts".into(),
+            ".tsx".into(),
+            ".js".into(),
+            ".jsx".into(),
+            ".mjs".into(),
+            ".cjs".into(),
+            ".mts".into(),
+            ".cts".into(),
+        ],
+        extension_alias: vec![(
+            ".js".into(),
+            vec![".ts".into(), ".tsx".into(), ".js".into(), ".jsx".into()],
+        )],
+        condition_names: vec![
+            "types".into(),
+            "import".into(),
+            "require".into(),
+            "default".into(),
+        ],
+        main_fields: vec!["types".into(), "module".into(), "main".into()],
+        tsconfig: Some(TsconfigDiscovery::Auto),
+        ..ResolveOptions::default()
+    })
 }
 
 #[cfg(test)]
@@ -378,5 +467,52 @@ mod tests {
         assert!(is_supported_extension("js"));
         assert!(!is_supported_extension("rs"));
         assert!(!is_supported_extension("py"));
+    }
+
+    #[test]
+    fn scan_resolves_imports_cycles_and_dead_exports() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("a.ts"),
+            r#"
+import { fromB } from "./b";
+export function fromA() { return fromB(); }
+export function unusedExport() { return 1; }
+export function alsoUnused() { return 2; }
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            src.join("b.ts"),
+            r#"
+import { fromA } from "./a";
+export function fromB() { return fromA(); }
+export function pass(value: string) { return trim(value); }
+"#,
+        )
+        .unwrap();
+
+        let mut analyzer = Analyzer::new(dir.path()).unwrap();
+        let result = analyzer.scan().unwrap();
+        assert!(result.symbols_found >= 4);
+        assert!(result
+            .findings
+            .iter()
+            .any(|finding| finding.pattern_type == crate::patterns::PatternType::ImportCycle));
+        let kinds: Vec<_> = result
+            .findings
+            .iter()
+            .map(|finding| finding.pattern_type.as_str())
+            .collect();
+        assert!(
+            kinds.iter().any(|kind| *kind == "dead_exports"),
+            "findings={kinds:?}"
+        );
+        assert!(
+            kinds.iter().any(|kind| *kind == "over_abstraction"),
+            "findings={kinds:?}"
+        );
     }
 }
