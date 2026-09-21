@@ -11,7 +11,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use prune_core::watcher::WatchEvent;
+use prune::watcher::WatchEvent;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 use std::path::Path;

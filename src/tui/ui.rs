@@ -1,8 +1,8 @@
 //! TUI rendering
 
 use super::app::{App, AppState};
-use prune_core::patterns::Severity;
-use prune_core::plan::RefactorPlan;
+use prune::patterns::Severity;
+use prune::plan::RefactorPlan;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

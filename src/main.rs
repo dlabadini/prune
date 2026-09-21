@@ -8,7 +8,7 @@ mod tui;
 
 use clap::Parser;
 use cli::{Cli, Commands, LicenseAction};
-use prune_core::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan};
+use prune::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan};
 use std::io::{self};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -80,10 +80,10 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
 
             for finding in &result.findings {
                 let severity_indicator = match finding.severity {
-                    prune_core::Severity::Critical => "[!!!!]",
-                    prune_core::Severity::High => "[!! ]",
-                    prune_core::Severity::Medium => "[!  ]",
-                    prune_core::Severity::Low => "[.  ]",
+                    prune::Severity::Critical => "[!!!!]",
+                    prune::Severity::High => "[!! ]",
+                    prune::Severity::Medium => "[!  ]",
+                    prune::Severity::Low => "[.  ]",
                 };
 
                 println!(

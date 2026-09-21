@@ -31,7 +31,7 @@ brew install prunecode/tap/prune
 ### Cargo (from source)
 
 ```bash
-cargo install prune
+cargo install prunecode
 ```
 
 ### Direct Download

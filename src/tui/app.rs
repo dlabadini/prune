@@ -1,11 +1,11 @@
 //! TUI Application state and logic
 
 use arboard::Clipboard;
-use prune_core::analyzer::{Analyzer, AnalyzerError, ScanResult};
-use prune_core::config::Strictness;
-use prune_core::patterns::{Finding, PatternType};
-use prune_core::plan::RefactorPlan;
-use prune_core::watcher::{FileWatcher, WatchEvent, WatchState};
+use prune::analyzer::{Analyzer, AnalyzerError, ScanResult};
+use prune::config::Strictness;
+use prune::patterns::{Finding, PatternType};
+use prune::plan::RefactorPlan;
+use prune::watcher::{FileWatcher, WatchEvent, WatchState};
 use std::path::{Path, PathBuf};
 
 /// Application state enum
