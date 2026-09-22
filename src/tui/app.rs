@@ -100,12 +100,7 @@ impl App {
         let Some(mut analyzer) = self.analyzer.take() else {
             return;
         };
-        let model_ready = prune::embeddings::embedding_model_ready();
-        self.set_status(if model_ready {
-            "Scanning...".to_string()
-        } else {
-            "Downloading local embedding model (~80 MB), then scanning".to_string()
-        });
+        self.set_status("Scanning...".to_string());
 
         let progress = Arc::new(Mutex::new(None));
         let slot = Arc::clone(&progress);
@@ -174,11 +169,35 @@ impl App {
 
     /// Refresh findings without a full file walk.
     pub fn refresh_findings(&mut self) {
-        let Some(analyzer) = self.analyzer.as_ref() else {
+        let Some(analyzer) = self.analyzer.as_mut() else {
             return;
         };
-        self.findings = analyzer.get_findings();
-        self.score = analyzer.score_findings(&self.findings).ok();
+        let previous_score = self.score.as_ref().map(|score| score.total);
+        let previous_count = self.findings.len();
+        match analyzer.analyze() {
+            Ok(result) => {
+                let summary = result.score.summary();
+                let score_total = result.score.total;
+                let findings_len = result.findings.len();
+                let duration_ms = result.scan_duration_ms;
+                let delta = previous_score
+                    .map(|previous| score_total - previous)
+                    .unwrap_or(0.0);
+                let count_delta = findings_len as i64 - previous_count as i64;
+                self.last_scan = Some(result.clone());
+                self.findings = result.findings;
+                self.score = Some(result.score);
+                self.set_status(format!(
+                    "{} ({:+.0})  ·  {} findings ({:+})  ·  {}ms",
+                    summary,
+                    delta,
+                    findings_len,
+                    count_delta,
+                    duration_ms
+                ));
+            }
+            Err(error) => self.set_status(format!("Analyze error: {error}")),
+        }
         self.apply_filter();
     }
 
@@ -440,13 +459,6 @@ fn progress_label(progress: ScanProgress) -> String {
     match progress {
         ScanProgress::Indexing { done, total, file } => {
             format!("Reading {file} ({done}/{total})")
-        }
-        ScanProgress::Embedding { model_ready } => {
-            if model_ready {
-                "Embedding symbols".to_string()
-            } else {
-                "Downloading local embedding model (~80 MB)".to_string()
-            }
         }
         ScanProgress::Scoring => "Scoring findings".to_string(),
     }

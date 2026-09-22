@@ -43,7 +43,9 @@ impl PatternDetector for GodFileDetector {
             };
 
             let exceeds_exports = export_count > effective_max_exports;
-            let exceeds_lines = line_count > effective_max_lines;
+            // Line count alone is not a god file — large pages and schemas are common.
+            let exceeds_lines = line_count > effective_max_lines
+                && export_count >= effective_max_exports.max(8);
 
             if exceeds_exports || exceeds_lines {
                 let severity = calculate_severity(

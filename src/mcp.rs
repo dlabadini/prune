@@ -31,6 +31,27 @@ struct PlanArgs {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct VerifyArgs {
+    /// Finding id, or a unique prefix of one.
+    finding_id: String,
+    /// Project directory. Defaults to the directory the server was started in.
+    #[serde(default)]
+    path: Option<String>,
+    /// Analyze indexed data only (skip file walk).
+    #[serde(default)]
+    quick: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct ComposeArgs {
+    /// Finding id, or a unique prefix of one.
+    finding_id: String,
+    /// Project directory. Defaults to the directory the server was started in.
+    #[serde(default)]
+    path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct RecentArgs {
     /// Project directory. Defaults to the directory the server was started in.
     #[serde(default)]
@@ -67,6 +88,47 @@ impl PruneServer {
         ]))
     }
 
+    #[tool(description = "Verify a finding is resolved after refactoring")]
+    fn verify(
+        &self,
+        Parameters(args): Parameters<VerifyArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let root = self.resolve(args.path.as_deref());
+        let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
+        let quick = args.quick.unwrap_or(false);
+        let result = crate::verify_finding(&mut analyzer, &args.finding_id, quick)
+            .map_err(tool_error)?;
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(json!(result)).map_err(tool_error)?,
+        ]))
+    }
+
+    #[tool(description = "Return structured compose/rename instructions for one finding")]
+    fn compose_plan(
+        &self,
+        Parameters(args): Parameters<ComposeArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let root = self.resolve(args.path.as_deref());
+        let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
+        let result = analyzer.analyze().map_err(tool_error)?;
+        let finding = result
+            .findings
+            .iter()
+            .find(|finding| {
+                finding.id == args.finding_id || finding.id.starts_with(&args.finding_id)
+            })
+            .ok_or_else(|| tool_error(format!("finding {} was not found", args.finding_id)))?;
+        let payload = json!({
+            "finding_id": finding.id,
+            "action_summary": finding.action_summary,
+            "prune_action": finding.prune_action,
+            "related_concepts": finding.related_concepts,
+        });
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(payload).map_err(tool_error)?,
+        ]))
+    }
+
     #[tool(description = "Generate a markdown refactor plan for one finding")]
     fn plan(
         &self,
@@ -74,7 +136,7 @@ impl PruneServer {
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
         let root = self.resolve(args.path.as_deref());
         let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
-        let result = analyzer.scan().map_err(tool_error)?;
+        let result = analyzer.analyze().map_err(tool_error)?;
         let finding = result
             .findings
             .iter()

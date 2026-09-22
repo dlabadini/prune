@@ -89,6 +89,12 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
         md.push('\n');
     }
 
+    if !finding.action_summary.is_empty() {
+        md.push_str("## Prune action\n\n");
+        md.push_str(&finding.action_summary);
+        md.push_str("\n\n");
+    }
+
     // Suggested Approach section
     if !finding.suggested_fix.is_empty() {
         md.push_str("## Suggested Approach\n\n");
@@ -148,11 +154,12 @@ fn generate_acceptance_criteria(finding: &Finding) -> String {
     let mut criteria = Vec::new();
 
     match finding.pattern_type {
-        PatternType::InterfaceSprawl => {
-            criteria.push("- [ ] Single canonical type definition created".to_string());
-            criteria.push("- [ ] All inline type definitions removed or replaced".to_string());
-            criteria.push("- [ ] All imports updated to use canonical type".to_string());
+        PatternType::InterfaceSprawl | PatternType::Lexicon => {
+            criteria.push("- [ ] Shared bundles extracted to target module".to_string());
+            criteria.push("- [ ] Consumers compose via `extends` / shared facts types".to_string());
+            criteria.push("- [ ] Homonym names aligned to canonical lexicon".to_string());
             criteria.push("- [ ] No type errors in the codebase".to_string());
+            criteria.push("- [ ] Rescan: finding id should be gone".to_string());
         }
         PatternType::RedundantLogic => {
             criteria.push("- [ ] Duplicate logic consolidated into single function".to_string());

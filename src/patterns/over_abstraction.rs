@@ -28,6 +28,9 @@ impl PatternDetector for OverAbstractionDetector {
         let mut wrapped_names = std::collections::HashSet::new();
         if let Ok(notes) = db.structural_notes("wrapper") {
             for note in notes {
+                if is_low_signal_path(&note.file_path) {
+                    continue;
+                }
                 wrapped_names.insert(note.name.clone());
                 let title = format!("Wrapper function: {}", note.name);
                 let description = format!(
@@ -62,6 +65,9 @@ impl PatternDetector for OverAbstractionDetector {
 
         // Check for wrapper functions the structural rule did not name.
         for file in &all_files {
+            if is_low_signal_path(&file.path) {
+                continue;
+            }
             let symbols = match db.get_file_symbols(file.id) {
                 Ok(syms) => syms,
                 Err(_) => continue,
@@ -95,8 +101,18 @@ impl PatternDetector for OverAbstractionDetector {
             }
         }
 
+        findings.truncate(40);
         findings
     }
+}
+
+fn is_low_signal_path(path: &str) -> bool {
+    path.contains("/components/ui/")
+        || path.contains("/ui/")
+        || path.contains("/testing/")
+        || path.contains("/seed/")
+        || path.contains("/_generated/")
+        || path.contains("/patches/")
 }
 
 fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Option<Finding> {

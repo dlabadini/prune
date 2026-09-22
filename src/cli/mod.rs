@@ -42,9 +42,27 @@ pub enum Commands {
         /// Save plan to file
         #[arg(long, short)]
         output: Option<PathBuf>,
+
+        /// Full filesystem scan before planning (default: analyze indexed data only)
+        #[arg(long)]
+        rescan: bool,
     },
 
-    /// Initialize a .prunerc configuration file
+    /// Verify a finding is resolved after refactoring
+    Verify {
+        /// Finding ID (or unique prefix)
+        finding_id: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Analyze indexed data only (skip file walk)
+        #[arg(long)]
+        quick: bool,
+    },
+
+    /// Write .prunerc and ignore the local .prune/ directory
     Init {
         /// Force overwrite existing config
         #[arg(long, short)]

@@ -32,7 +32,13 @@ fn main() {
             finding_id,
             copy,
             output,
-        }) => cmd_plan(&root, &finding_id, copy, output),
+            rescan,
+        }) => cmd_plan(&root, &finding_id, copy, output, rescan),
+        Some(Commands::Verify {
+            finding_id,
+            json,
+            quick,
+        }) => cmd_verify(&root, &finding_id, json, quick),
         Some(Commands::Init { force }) => cmd_init(&root, force),
         Some(Commands::Config) => cmd_config(&root),
         Some(Commands::Mcp) => cmd_mcp(&root),
@@ -43,6 +49,21 @@ fn main() {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     }
+}
+
+fn print_findings_summary(findings: &[prune::patterns::Finding]) {
+    use std::collections::BTreeMap;
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for finding in findings {
+        *counts
+            .entry(finding.pattern_type.as_str())
+            .or_insert(0) += 1;
+    }
+    println!("Findings by pattern:");
+    for (pattern, count) in counts {
+        println!("  {pattern}: {count}");
+    }
+    println!();
 }
 
 fn cmd_mcp(root: &std::path::Path) -> io::Result<()> {
@@ -91,10 +112,16 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
         );
         println!();
 
+        let config = Config::find_and_load(root).unwrap_or_default();
+        let suggestions = prune::suggest::from_findings(&result.findings, &config);
+        prune::suggest::print_suggestions(&suggestions);
+
         if result.findings.is_empty() {
             println!("No issues found.");
         } else {
-            for finding in &result.findings {
+            print_findings_summary(&result.findings);
+            let show = result.findings.len().min(25);
+            for finding in result.findings.iter().take(show) {
                 println!(
                     "{} {}  {} — {}",
                     finding.pattern_type.tier().as_str(),
@@ -106,16 +133,106 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
                 for loc in &finding.locations {
                     println!("    {}:{}", loc.file, loc.start_line);
                 }
+                if !finding.action_summary.is_empty() {
+                    println!("    Prune: {}", finding.action_summary);
+                }
                 println!("    Next: {}", prune::score::next_line(finding));
                 println!();
+            }
+            if result.findings.len() > show {
+                println!(
+                    "... and {} more findings. Use `prune scan --json` for the full list.",
+                    result.findings.len() - show
+                );
             }
         }
     }
 
     if watch {
-        println!("Watch mode not yet implemented in headless mode. Use interactive TUI instead.");
+        run_headless_watch(&mut analyzer)?;
     }
 
+    Ok(())
+}
+
+fn run_headless_watch(analyzer: &mut Analyzer) -> io::Result<()> {
+    use prune::watcher::{FileWatcher, WatchEvent};
+    use std::time::Duration;
+
+    let root = analyzer.root().to_path_buf();
+    let mut watcher = FileWatcher::new(&root, 400).map_err(|e| io::Error::other(e.to_string()))?;
+    watcher
+        .start()
+        .map_err(|e| io::Error::other(e.to_string()))?;
+
+    println!("Watching {} — Ctrl+C to stop", root.display());
+    let mut last_score: Option<f32> = None;
+    let mut last_findings = 0usize;
+
+    loop {
+        if let Some(events) = watcher.recv_timeout(Duration::from_millis(400)) {
+            for event in events {
+                match event {
+                    WatchEvent::Modified(path) | WatchEvent::Created(path) => {
+                        if let Err(error) = analyzer.reindex_file(&path) {
+                            eprintln!("Reindex error: {error}");
+                        }
+                    }
+                    WatchEvent::Deleted(path) => {
+                        let _ = analyzer.reindex_file(&path);
+                    }
+                    WatchEvent::Error(message) => eprintln!("Watch error: {message}"),
+                }
+            }
+            let result = analyzer
+                .analyze()
+                .map_err(|e| io::Error::other(e.to_string()))?;
+            let delta = last_score
+                .map(|previous| result.score.total - previous)
+                .unwrap_or(0.0);
+            let finding_delta = result.findings.len() as i64 - last_findings as i64;
+            println!(
+                "Score {:.0} ({:+.0})  ·  {} findings ({:+})  ·  {}ms",
+                result.score.total,
+                delta,
+                result.findings.len(),
+                finding_delta,
+                result.scan_duration_ms
+            );
+            last_score = Some(result.score.total);
+            last_findings = result.findings.len();
+        }
+    }
+}
+
+fn cmd_verify(
+    root: &std::path::Path,
+    finding_id: &str,
+    json: bool,
+    quick: bool,
+) -> io::Result<()> {
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    let result = prune::verify_finding(&mut analyzer, finding_id, quick)
+        .map_err(|e| io::Error::other(e.to_string()))?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+    } else {
+        println!(
+            "{}  {}",
+            if result.resolved { "✓" } else { "✗" },
+            result.message
+        );
+        if !result.resolved && !result.related_still_present.is_empty() {
+            for title in &result.related_still_present {
+                println!("  · {title}");
+            }
+        }
+        println!("Rescan: prune verify {finding_id}");
+    }
+    if !result.resolved {
+        std::process::exit(1);
+    }
     Ok(())
 }
 
@@ -124,12 +241,19 @@ fn cmd_plan(
     finding_id: &str,
     copy: bool,
     output: Option<std::path::PathBuf>,
+    rescan: bool,
 ) -> io::Result<()> {
     let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
 
-    let result = analyzer
-        .scan()
-        .map_err(|e| io::Error::other(e.to_string()))?;
+    let result = if rescan {
+        analyzer
+            .scan()
+            .map_err(|e| io::Error::other(e.to_string()))?
+    } else {
+        analyzer
+            .analyze()
+            .map_err(|e| io::Error::other(e.to_string()))?
+    };
 
     // Find the requested finding
     let finding = result
@@ -171,28 +295,27 @@ fn cmd_init(root: &std::path::Path, force: bool) -> io::Result<()> {
     let config_path = Config::config_path(root);
 
     if config_path.exists() && !force {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            format!(
-                "Config file already exists at {}. Use --force to overwrite.",
-                config_path.display()
-            ),
-        ));
+        println!("Config already exists at {}", config_path.display());
+    } else {
+        let config = Config::default();
+        config
+            .save(&config_path)
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        println!("Created {}", config_path.display());
     }
 
-    let config = Config::default();
-    config
-        .save(&config_path)
-        .map_err(|e| io::Error::other(e.to_string()))?;
+    prune::workspace::ensure_data_dir(root)?;
+    if prune::workspace::ensure_gitignore(root)? {
+        println!("Added .prune/ to .gitignore");
+    }
 
-    println!("Created {}", config_path.display());
+    let config = Config::find_and_load(root).unwrap_or_default();
+    let suggestions = prune::suggest::from_filesystem(root, &config);
+    prune::suggest::print_suggestions(&suggestions);
+
     println!();
-    println!("Configuration options:");
-    println!("  strictness: relaxed | default | strict");
-    println!("  exclude: [\"pattern1\", \"pattern2\", ...]");
-    println!("  disabled_patterns: [\"god_file\", \"barrel_bloat\", ...]");
-    println!();
-    println!("See documentation for threshold overrides.");
+    println!("Commit .prunerc. Leave .prune/ untracked — it is the local index.");
+    println!("Then run `prune` or `prune scan` in this repo.");
 
     Ok(())
 }
@@ -225,6 +348,14 @@ fn cmd_config(root: &std::path::Path) -> io::Result<()> {
     println!(
         "  Interface sprawl min cluster: {}",
         config.effective_interface_sprawl_min_cluster()
+    );
+    println!(
+        "  Interface sprawl min bundle fields: {}",
+        config.effective_interface_sprawl_min_bundle_fields()
+    );
+    println!(
+        "  Interface sprawl min overlap ratio: {:.0}%",
+        config.effective_interface_sprawl_min_overlap_ratio() * 100.0
     );
     println!(
         "  Redundant logic similarity: {:.0}%",

@@ -97,7 +97,9 @@ pub fn action_prompt(finding: &Finding) -> String {
         .iter()
         .find_map(|location| location.snippet.as_ref().map(|snippet| first_line(snippet)))
         .unwrap_or_else(|| first_line(&finding.description));
-    let next = if finding.suggested_fix.trim().is_empty() {
+    let next = if !finding.action_summary.is_empty() {
+        finding.action_summary.clone()
+    } else if finding.suggested_fix.trim().is_empty() {
         first_line(&finding.description)
     } else {
         first_line(&finding.suggested_fix)
@@ -243,7 +245,7 @@ fn pattern_applies(db: &Database, pattern: PatternType) -> Result<bool, crate::d
         PatternType::GodFile => !db.get_all_files()?.is_empty(),
         PatternType::DeadExports => !db.get_exported_symbols()?.is_empty(),
         PatternType::ImportCycle => !db.import_edges()?.is_empty(),
-        PatternType::InterfaceSprawl => {
+        PatternType::InterfaceSprawl | PatternType::Lexicon => {
             !db.get_symbols_by_kind(SymbolKind::Interface)?.is_empty()
                 || !db.get_symbols_by_kind(SymbolKind::TypeAlias)?.is_empty()
         }

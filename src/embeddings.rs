@@ -22,10 +22,23 @@ fn embedder() -> Option<std::sync::MutexGuard<'static, TextEmbedding>> {
     slot.as_ref().and_then(|mutex| mutex.lock().ok())
 }
 
+/// Keep ONNX weights under `.prune/models` instead of a extra repo-root cache.
+pub fn prepare_cache(project_root: &std::path::Path) {
+    let cache = crate::workspace::models_dir(project_root);
+    let _ = std::fs::create_dir_all(&cache);
+    std::env::set_var("FASTEMBED_CACHE_DIR", &cache);
+}
+
 /// Whether the MiniLM weights are already on disk. The first embed downloads them.
 pub fn embedding_model_ready() -> bool {
-    let cache = std::env::var("FASTEMBED_CACHE_DIR").unwrap_or_else(|_| ".fastembed_cache".into());
-    onnx_present(&PathBuf::from(cache))
+    let cache = std::env::var("FASTEMBED_CACHE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(".prune/models"));
+    onnx_present(&cache)
+}
+
+pub fn embedding_model_ready_for(project_root: &std::path::Path) -> bool {
+    onnx_present(&crate::workspace::models_dir(project_root))
 }
 
 fn onnx_present(dir: &std::path::Path) -> bool {

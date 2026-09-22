@@ -4,7 +4,8 @@ mod barrel_bloat;
 mod dead_exports;
 mod god_file;
 mod import_cycle;
-mod interface_sprawl;
+pub mod interface_sprawl;
+mod lexicon;
 mod over_abstraction;
 mod redundant_logic;
 
@@ -13,11 +14,14 @@ pub use dead_exports::DeadExportsDetector;
 pub use god_file::GodFileDetector;
 pub use import_cycle::ImportCycleDetector;
 pub use interface_sprawl::InterfaceSprawlDetector;
+pub use lexicon::LexiconDetector;
 pub use over_abstraction::OverAbstractionDetector;
 pub use redundant_logic::RedundantLogicDetector;
 
 use crate::config::Config;
 use crate::db::Database;
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -108,6 +112,7 @@ impl Tier {
 #[serde(rename_all = "snake_case")]
 pub enum PatternType {
     InterfaceSprawl,
+    Lexicon,
     RedundantLogic,
     GodFile,
     BarrelBloat,
@@ -120,6 +125,7 @@ impl PatternType {
     pub fn as_str(&self) -> &'static str {
         match self {
             PatternType::InterfaceSprawl => "interface_sprawl",
+            PatternType::Lexicon => "lexicon",
             PatternType::RedundantLogic => "redundant_logic",
             PatternType::GodFile => "god_file",
             PatternType::BarrelBloat => "barrel_bloat",
@@ -132,6 +138,7 @@ impl PatternType {
     pub fn display_name(&self) -> &'static str {
         match self {
             PatternType::InterfaceSprawl => "Interface Sprawl",
+            PatternType::Lexicon => "Lexicon",
             PatternType::RedundantLogic => "Redundant Logic",
             PatternType::GodFile => "God File",
             PatternType::BarrelBloat => "Barrel Bloat",
@@ -148,6 +155,7 @@ impl PatternType {
                 Tier::Essential
             }
             PatternType::InterfaceSprawl
+            | PatternType::Lexicon
             | PatternType::RedundantLogic
             | PatternType::BarrelBloat => Tier::Recommended,
             PatternType::OverAbstraction => Tier::Emerging,
@@ -156,7 +164,12 @@ impl PatternType {
 
     pub fn description(&self) -> &'static str {
         match self {
-            PatternType::InterfaceSprawl => "Multiple inline types representing the same concept",
+            PatternType::InterfaceSprawl => {
+                "Duplicate or partially overlapping types that should compose shared bundles"
+            }
+            PatternType::Lexicon => {
+                "Naming drift and resource smash on shared shapes — align lexicon, compose facts"
+            }
             PatternType::RedundantLogic => {
                 "Semantically similar code blocks that could be consolidated"
             }
@@ -171,6 +184,7 @@ impl PatternType {
     pub fn all() -> &'static [PatternType] {
         &[
             PatternType::InterfaceSprawl,
+            PatternType::Lexicon,
             PatternType::RedundantLogic,
             PatternType::GodFile,
             PatternType::BarrelBloat,
@@ -208,6 +222,12 @@ pub struct Finding {
     pub last_seen: DateTime<Utc>,
     /// Related symbol names or concepts
     pub related_concepts: Vec<String>,
+    /// One-line machine/human summary of the pruning action
+    #[serde(default)]
+    pub action_summary: String,
+    /// Structured compose/rename plan for agents
+    #[serde(default)]
+    pub prune_action: Option<crate::compose::PruneAction>,
 }
 
 impl Finding {
@@ -236,6 +256,8 @@ impl Finding {
             first_detected: now,
             last_seen: now,
             related_concepts: Vec::new(),
+            action_summary: String::new(),
+            prune_action: None,
         }
     }
 
@@ -256,6 +278,16 @@ impl Finding {
 
     pub fn with_related_concepts(mut self, concepts: Vec<String>) -> Self {
         self.related_concepts = concepts;
+        self
+    }
+
+    pub fn with_action_summary(mut self, summary: String) -> Self {
+        self.action_summary = summary;
+        self
+    }
+
+    pub fn with_prune_action(mut self, action: crate::compose::PruneAction) -> Self {
+        self.prune_action = Some(action);
         self
     }
 
@@ -295,6 +327,7 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
         Box::new(BarrelBloatDetector),
         Box::new(DeadExportsDetector),
         Box::new(InterfaceSprawlDetector),
+        Box::new(LexiconDetector),
         Box::new(RedundantLogicDetector),
         Box::new(OverAbstractionDetector),
         Box::new(ImportCycleDetector),
@@ -323,6 +356,75 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
     });
 
     all_findings
+}
+
+/// 64-bit fingerprint of a normalized body. Similar text shares bits.
+pub(crate) fn simhash(text: &str) -> u64 {
+    let mut weights = [0i32; 64];
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        line.hash(&mut hasher);
+        let hashed = hasher.finish();
+        for bit in 0..64 {
+            if (hashed >> bit) & 1 == 1 {
+                weights[bit] += 1;
+            } else {
+                weights[bit] -= 1;
+            }
+        }
+    }
+    let mut out = 0u64;
+    for bit in 0..64 {
+        if weights[bit] > 0 {
+            out |= 1 << bit;
+        }
+    }
+    out
+}
+
+/// Pairs that share a 16-bit band of `simhash`. This stays small on a real repo.
+pub(crate) fn candidate_pairs(hashes: &[u64]) -> Vec<(usize, usize)> {
+    let mut bands: HashMap<(u8, u16), Vec<usize>> = HashMap::new();
+    for (index, hash) in hashes.iter().enumerate() {
+        for band in 0..4u8 {
+            let piece = ((hash >> (band * 16)) & 0xffff) as u16;
+            bands.entry((band, piece)).or_default().push(index);
+        }
+    }
+
+    let mut pairs = HashSet::new();
+    for group in bands.values() {
+        if group.len() < 2 {
+            continue;
+        }
+        if group.len() > 48 {
+            let mut exact: HashMap<u64, Vec<usize>> = HashMap::new();
+            for &index in group {
+                exact.entry(hashes[index]).or_default().push(index);
+            }
+            for ids in exact.values() {
+                push_pairs(&mut pairs, ids);
+            }
+        } else {
+            push_pairs(&mut pairs, group);
+        }
+    }
+    pairs.into_iter().collect()
+}
+
+fn push_pairs(pairs: &mut HashSet<(usize, usize)>, ids: &[usize]) {
+    for (left, a) in ids.iter().enumerate() {
+        for b in ids.iter().skip(left + 1) {
+            let (lo, hi) = if a < b { (*a, *b) } else { (*b, *a) };
+            if lo != hi {
+                pairs.insert((lo, hi));
+            }
+        }
+    }
 }
 
 #[cfg(test)]

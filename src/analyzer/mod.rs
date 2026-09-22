@@ -47,9 +47,6 @@ pub enum ScanProgress {
         total: usize,
         file: String,
     },
-    Embedding {
-        model_ready: bool,
-    },
     Scoring,
 }
 
@@ -66,6 +63,7 @@ impl Analyzer {
     /// Create a new analyzer for a project root
     pub fn new(root: &Path) -> Result<Self, AnalyzerError> {
         let config = Config::find_and_load(root).unwrap_or_default();
+        crate::embeddings::prepare_cache(root);
         let db = Database::open_for_project(root)?;
         let indexer = Indexer::new();
         let resolver = project_resolver();
@@ -81,6 +79,7 @@ impl Analyzer {
 
     /// Create analyzer with custom config
     pub fn with_config(root: &Path, config: Config) -> Result<Self, AnalyzerError> {
+        crate::embeddings::prepare_cache(root);
         let db = Database::open_for_project(root)?;
         let indexer = Indexer::new();
         let resolver = project_resolver();
@@ -92,6 +91,11 @@ impl Analyzer {
             indexer,
             resolver,
         })
+    }
+
+    /// Project root being analyzed.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     /// Get the current configuration
@@ -117,6 +121,7 @@ impl Analyzer {
         let start = Instant::now();
 
         let files = self.collect_files()?;
+        self.purge_stale_indexed_files(&files)?;
         let mut files_scanned = 0;
         let mut files_changed = 0;
         let total = files.len();
@@ -146,6 +151,7 @@ impl Analyzer {
         }
 
         self.finalize_index(report)?;
+        self.sync_embeddings()?;
 
         report(ScanProgress::Scoring);
         let mut findings = run_all_detectors(&self.db, &self.config);
@@ -157,6 +163,25 @@ impl Analyzer {
         Ok(ScanResult {
             files_scanned,
             files_changed,
+            total_lines: stats.total_lines,
+            symbols_found: stats.symbol_count,
+            findings,
+            score,
+            scan_duration_ms: start.elapsed().as_millis() as u64,
+        })
+    }
+
+    /// Run detectors on the current index without re-walking files.
+    pub fn analyze(&mut self) -> Result<ScanResult, AnalyzerError> {
+        let start = Instant::now();
+        self.sync_embeddings()?;
+        let mut findings = run_all_detectors(&self.db, &self.config);
+        crate::gitinfo::annotate_findings(&self.root, &mut findings);
+        let score = crate::score::score_repo(&self.db, &self.config, &findings)?;
+        let stats = self.db.get_stats()?;
+        Ok(ScanResult {
+            files_scanned: stats.file_count,
+            files_changed: 0,
             total_lines: stats.total_lines,
             symbols_found: stats.symbol_count,
             findings,
@@ -187,6 +212,49 @@ impl Analyzer {
 
         self.index_file(file_path, &content, &hash)?;
         self.finalize_index(&mut |_| {})?;
+        self.sync_embeddings()?;
+        Ok(())
+    }
+
+    /// Embed new/changed symbols incrementally for semantic duplicate detection.
+    fn sync_embeddings(&mut self) -> Result<(), AnalyzerError> {
+        if !self.config.effective_embeddings_enabled(&self.root) {
+            return Ok(());
+        }
+        let symbols = self.db.symbols_for_embedding()?;
+        if symbols.is_empty() {
+            return Ok(());
+        }
+
+        let mut pending: Vec<(i64, String, String)> = Vec::new();
+        for (symbol_id, source_text) in symbols {
+            let hash = crate::embeddings::content_key(&source_text);
+            match self.db.cached_embedding(&hash)? {
+                Some(vector) => {
+                    self.db
+                        .store_embedding(symbol_id, &hash, &vector)
+                        .map_err(AnalyzerError::DbError)?;
+                }
+                None => pending.push((symbol_id, hash, source_text)),
+            }
+        }
+
+        const BATCH: usize = 48;
+        for chunk in pending.chunks(BATCH) {
+            let texts = chunk
+                .iter()
+                .map(|(_, _, text)| text.clone())
+                .collect::<Vec<_>>();
+            let Some(vectors) = crate::embeddings::embed_texts(&texts) else {
+                tracing::debug!("skipping embedding batch: model unavailable");
+                return Ok(());
+            };
+            for ((symbol_id, hash, _), vector) in chunk.iter().zip(vectors) {
+                self.db
+                    .store_embedding(*symbol_id, hash, &vector)
+                    .map_err(AnalyzerError::DbError)?;
+            }
+        }
         Ok(())
     }
 
@@ -198,6 +266,18 @@ impl Analyzer {
     /// Get database statistics
     pub fn get_stats(&self) -> Result<crate::db::DbStats, AnalyzerError> {
         Ok(self.db.get_stats()?)
+    }
+
+    /// Drop indexed files that are no longer scanned (excluded, deleted, or renamed).
+    fn purge_stale_indexed_files(&self, files: &[PathBuf]) -> Result<(), AnalyzerError> {
+        let active: std::collections::HashSet<String> =
+            files.iter().map(|path| self.relative_path(path)).collect();
+        for file in self.db.get_all_files()? {
+            if !active.contains(&file.path) {
+                self.db.delete_file(&file.path)?;
+            }
+        }
+        Ok(())
     }
 
     /// Collect all source files to analyze
@@ -302,21 +382,26 @@ impl Analyzer {
         Ok(())
     }
 
-    /// Resolve imports, record cross-file references, and refresh embeddings.
+    /// Resolve imports and record cross-file references.
     fn finalize_index(
         &mut self,
-        report: &mut dyn FnMut(ScanProgress),
+        _report: &mut dyn FnMut(ScanProgress),
     ) -> Result<(), AnalyzerError> {
         self.db.clear_refs()?;
         let edges = self.db.import_edges()?;
         for edge in edges {
             let absolute = self.root.join(&edge.source_path);
-            let Ok(resolved) = self.resolver.resolve_file(&absolute, &edge.specifier) else {
-                continue;
+            let full = match self.resolver.resolve_file(&absolute, &edge.specifier) {
+                Ok(resolved) => resolved.full_path(),
+                Err(_) => match resolve_relative_import(&absolute, &edge.specifier) {
+                    Some(path) => path,
+                    None => continue,
+                },
             };
-            let full = resolved.full_path();
+            let root = std::fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
+            let full = std::fs::canonicalize(&full).unwrap_or(full);
             let Some(relative) = full
-                .strip_prefix(&self.root)
+                .strip_prefix(&root)
                 .ok()
                 .map(|path| path.to_string_lossy().replace('\\', "/"))
             else {
@@ -344,43 +429,6 @@ impl Analyzer {
             }
         }
 
-        report(ScanProgress::Embedding {
-            model_ready: crate::embeddings::embedding_model_ready(),
-        });
-        self.embed_symbols()?;
-        Ok(())
-    }
-
-    fn embed_symbols(&self) -> Result<(), AnalyzerError> {
-        let symbols = self.db.symbols_for_embedding()?;
-        let mut missing_ids = Vec::new();
-        let mut missing_text = Vec::new();
-        let mut missing_keys = Vec::new();
-        for (id, source) in symbols {
-            let clipped: String = source.chars().take(1500).collect();
-            if clipped.trim().is_empty() {
-                continue;
-            }
-            let key = crate::embeddings::content_key(&clipped);
-            if let Some(vector) = self.db.cached_embedding(&key)? {
-                if self.db.store_embedding(id, &key, &vector).is_err() {
-                    continue;
-                }
-            } else {
-                missing_ids.push(id);
-                missing_text.push(clipped);
-                missing_keys.push(key);
-            }
-        }
-        if missing_text.is_empty() {
-            return Ok(());
-        }
-        let Some(vectors) = crate::embeddings::embed_texts(&missing_text) else {
-            return Ok(());
-        };
-        for ((id, key), vector) in missing_ids.iter().zip(missing_keys).zip(vectors) {
-            let _ = self.db.store_embedding(*id, &key, &vector);
-        }
         Ok(())
     }
 
@@ -400,23 +448,16 @@ impl Analyzer {
                 .config
                 .include
                 .iter()
-                .any(|pattern| glob_match(pattern, rel_path));
+                .any(|pattern| crate::config::glob_match(pattern, rel_path));
             if !included {
                 return true;
             }
         }
 
         // Check exclude patterns
-        self.config
-            .exclude
-            .iter()
-            .any(|pattern| glob_match(pattern, rel_path))
+        self.config.excludes_path(rel_path)
     }
 
-    /// Get the project root
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
 }
 
 fn is_supported_extension(ext: &str) -> bool {
@@ -435,34 +476,24 @@ fn calculate_hash(content: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
-fn glob_match(pattern: &str, path: &str) -> bool {
-    // Simple glob matching - could be improved with proper glob crate
-    if pattern.contains("**") {
-        let parts: Vec<_> = pattern.split("**").collect();
-        if parts.len() == 2 {
-            let prefix = parts[0].trim_end_matches('/');
-            let suffix = parts[1].trim_start_matches('/');
-
-            let matches_prefix = prefix.is_empty() || path.starts_with(prefix);
-            let matches_suffix = if suffix.is_empty() {
-                true
-            } else if suffix.starts_with("*.") {
-                // Handle **/*.ext patterns
-                path.ends_with(&suffix[1..])
-            } else {
-                path.ends_with(suffix)
-            };
-
-            return matches_prefix && matches_suffix;
+fn resolve_relative_import(source: &Path, specifier: &str) -> Option<PathBuf> {
+    if !(specifier.starts_with("./") || specifier.starts_with("../")) {
+        return None;
+    }
+    let base = source.parent()?;
+    let joined = base.join(specifier);
+    if joined.is_file() {
+        return Some(joined);
+    }
+    if joined.extension().is_none() {
+        for ext in ["ts", "tsx", "js", "jsx", "mjs", "mts"] {
+            let candidate = joined.with_extension(ext);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
         }
     }
-
-    if pattern.starts_with("*.") {
-        let ext = &pattern[1..];
-        return path.ends_with(ext);
-    }
-
-    path.contains(pattern)
+    None
 }
 
 fn project_resolver() -> Resolver {
@@ -499,10 +530,11 @@ mod tests {
 
     #[test]
     fn test_glob_match() {
-        assert!(glob_match("**/*.ts", "src/foo/bar.ts"));
-        assert!(glob_match("node_modules/**", "node_modules/foo/bar.js"));
-        assert!(glob_match("*.min.js", "bundle.min.js"));
-        assert!(!glob_match("*.ts", "foo.js"));
+        assert!(crate::config::glob_match("**/*.ts", "src/foo/bar.ts"));
+        assert!(crate::config::glob_match("node_modules/**", "node_modules/foo/bar.js"));
+        assert!(crate::config::glob_match("**/_generated/**", "convex/_generated/server.d.ts"));
+        assert!(crate::config::glob_match("*.min.js", "bundle.min.js"));
+        assert!(!crate::config::glob_match("*.ts", "foo.js"));
     }
 
     #[test]
@@ -520,12 +552,25 @@ mod tests {
         let src = dir.path().join("src");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(
+            dir.path().join("package.json"),
+            r#"{"name":"prune-fixture","type":"module"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("tsconfig.json"),
+            r#"{"compilerOptions":{"moduleResolution":"bundler","paths":{}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
             src.join("a.ts"),
             r#"
 import { fromB } from "./b";
 export function fromA() { return fromB(); }
-export function unusedExport() { return 1; }
-export function alsoUnused() { return 2; }
+export function unused1() { return 1; }
+export function unused2() { return 2; }
+export function unused3() { return 3; }
+export function unused4() { return 4; }
+export function unused5() { return 5; }
 "#,
         )
         .unwrap();

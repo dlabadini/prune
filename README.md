@@ -41,11 +41,16 @@ Download binaries from [Releases](https://github.com/prunecode/prune/releases).
 ## Quick Start
 
 ```bash
-# Launch interactive TUI in current directory
-prune
-
-# Or run a CLI scan
+# In the repo you want to check
+prune init
 prune scan
+```
+
+`prune init` writes `.prunerc` (commit this) and adds `.prune/` to `.gitignore`. The local index lives only under `.prune/`.
+
+```bash
+# Interactive TUI
+prune
 
 # JSON output for CI
 prune scan --json
@@ -106,7 +111,7 @@ prune plan <finding-id> --copy
 # Save plan to file
 prune plan <finding-id> -o plan.md
 
-# Initialize config
+# Write .prunerc and ignore .prune/
 prune init
 
 # Show current config
@@ -128,7 +133,7 @@ Prune detects 6 anti-patterns:
 
 ## Configuration
 
-Create `.prunerc` in your project root:
+Create `.prunerc` in your project root, or run `prune init`. Generated data stays in `.prune/` and should not be committed.
 
 ```toml
 # Strictness: relaxed | default | strict

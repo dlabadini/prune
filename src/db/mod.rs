@@ -158,8 +158,7 @@ impl Database {
 
     /// Open database in the .prune directory of a project
     pub fn open_for_project(project_root: &Path) -> Result<Self, DbError> {
-        let prune_dir = project_root.join(".prune");
-        std::fs::create_dir_all(&prune_dir)?;
+        let prune_dir = crate::workspace::ensure_data_dir(project_root)?;
         let db_path = prune_dir.join("index.db");
         Self::open(&db_path)
     }

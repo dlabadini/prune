@@ -52,8 +52,8 @@ impl PatternDetector for DeadExportsDetector {
                 continue;
             }
 
-            // Skip if there's only one dead export (might be intentional public API)
-            if symbols.len() < 2 {
+            // Need several dead exports before this is worth acting on.
+            if symbols.len() < 5 {
                 continue;
             }
 

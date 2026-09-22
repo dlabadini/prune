@@ -4,6 +4,7 @@ use super::{Finding, Location, PatternDetector, PatternType, Severity};
 use crate::config::Config;
 use crate::db::{Database, Symbol, SymbolKind};
 use similar::TextDiff;
+use std::collections::HashSet;
 
 pub struct RedundantLogicDetector;
 
@@ -28,10 +29,19 @@ impl PatternDetector for RedundantLogicDetector {
             return findings;
         }
 
-        // Find similar function pairs
-        let similar_pairs = find_similar_pairs(&functions, similarity_threshold, db);
+        let similar_pairs = find_similar_pairs(&functions, similarity_threshold);
+        let text_keys = similar_pairs
+            .iter()
+            .map(|(left, right, _)| (left.id.min(right.id), left.id.max(right.id)))
+            .collect::<HashSet<_>>();
+        let embedding_pairs =
+            find_embedding_pairs(db, &functions, similarity_threshold, &text_keys);
+        let mut all_pairs = similar_pairs;
+        all_pairs.extend(embedding_pairs);
+        all_pairs.sort_by(|left, right| right.2.partial_cmp(&left.2).unwrap_or(std::cmp::Ordering::Equal));
+        all_pairs.truncate(25);
 
-        for (a, b, similarity) in similar_pairs {
+        for (a, b, similarity) in all_pairs {
             let a_path = match db.get_file_path(a.file_id) {
                 Ok(Some(path)) => path,
                 _ => continue,
@@ -40,6 +50,13 @@ impl PatternDetector for RedundantLogicDetector {
                 Ok(Some(path)) => path,
                 _ => continue,
             };
+
+            if a.name == b.name {
+                continue;
+            }
+            if is_ui_boilerplate_path(&a_path) && is_ui_boilerplate_path(&b_path) {
+                continue;
+            }
 
             // Skip if in same file and adjacent (might be intentional overloads)
             if a.file_id == b.file_id
@@ -99,36 +116,28 @@ impl PatternDetector for RedundantLogicDetector {
     }
 }
 
-fn find_similar_pairs(
-    functions: &[Symbol],
-    threshold: f32,
-    db: &Database,
-) -> Vec<(Symbol, Symbol, f32)> {
+fn find_similar_pairs(functions: &[Symbol], threshold: f32) -> Vec<(Symbol, Symbol, f32)> {
     let mut pairs = Vec::new();
+    let eligible: Vec<&Symbol> = functions
+        .iter()
+        .filter(|function| function.source_text.lines().count() >= 3)
+        .collect();
+    let hashes: Vec<u64> = eligible
+        .iter()
+        .map(|function| super::simhash(&normalize_function_body(&function.source_text)))
+        .collect();
 
-    for (i, a) in functions.iter().enumerate() {
-        // Skip very short functions (likely trivial)
-        if a.source_text.lines().count() < 3 {
+    for (left, right) in super::candidate_pairs(&hashes) {
+        let a = eligible[left];
+        let b = eligible[right];
+        let a_lines = a.source_text.lines().count();
+        let b_lines = b.source_text.lines().count();
+        if a_lines > b_lines * 2 || b_lines > a_lines * 2 {
             continue;
         }
-
-        for b in functions.iter().skip(i + 1) {
-            // Skip very short functions
-            if b.source_text.lines().count() < 3 {
-                continue;
-            }
-
-            // Skip if line count differs by more than 2x (likely not similar)
-            let a_lines = a.source_text.lines().count();
-            let b_lines = b.source_text.lines().count();
-            if a_lines > b_lines * 2 || b_lines > a_lines * 2 {
-                continue;
-            }
-
-            let similarity = combined_similarity(a, b, db);
-            if similarity >= threshold {
-                pairs.push((a.clone(), b.clone(), similarity));
-            }
+        let similarity = calculate_function_similarity(a, b);
+        if similarity >= threshold {
+            pairs.push((a.clone(), b.clone(), similarity));
         }
     }
 
@@ -141,19 +150,52 @@ fn find_similar_pairs(
     pairs
 }
 
-fn combined_similarity(a: &Symbol, b: &Symbol, db: &Database) -> f32 {
-    let textual = calculate_function_similarity(a, b);
-    let embedded = db
-        .nearest_ids(a.id, 16)
-        .ok()
-        .and_then(|neighbors| {
-            neighbors
-                .into_iter()
-                .find(|(id, _)| *id == b.id)
-                .map(|(_, score)| score)
-        })
-        .unwrap_or(0.0);
-    textual.max(embedded)
+fn find_embedding_pairs(
+    db: &Database,
+    functions: &[Symbol],
+    threshold: f32,
+    text_pairs: &HashSet<(i64, i64)>,
+) -> Vec<(Symbol, Symbol, f32)> {
+    let by_id: std::collections::HashMap<i64, &Symbol> =
+        functions.iter().map(|function| (function.id, function)).collect();
+    let mut pairs = Vec::new();
+    let mut seen = HashSet::new();
+    for function in functions {
+        if function.source_text.lines().count() < 3 {
+            continue;
+        }
+        let neighbors = match db.nearest_ids(function.id, 5) {
+            Ok(neighbors) => neighbors,
+            Err(_) => continue,
+        };
+        if neighbors.is_empty() {
+            continue;
+        }
+        for (neighbor_id, similarity) in neighbors {
+            if similarity < threshold {
+                continue;
+            }
+            let key = (function.id.min(neighbor_id), function.id.max(neighbor_id));
+            if text_pairs.contains(&key) || seen.contains(&key) {
+                continue;
+            }
+            let Some(other) = by_id.get(&neighbor_id) else {
+                continue;
+            };
+            if function.name == other.name {
+                continue;
+            }
+            seen.insert(key);
+            pairs.push((function.clone(), (*other).clone(), similarity));
+        }
+    }
+    pairs
+}
+
+fn is_ui_boilerplate_path(path: &str) -> bool {
+    path.contains("/components/ui/")
+        || path.contains("/ui/")
+        || path.ends_with("/components/ui")
 }
 
 fn calculate_function_similarity(a: &Symbol, b: &Symbol) -> f32 {
