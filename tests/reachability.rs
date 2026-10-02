@@ -120,3 +120,43 @@ fn reports_value_and_type_cycles_separately() {
     assert!(types.related_concepts.iter().any(|c| c == "cycle:type"));
     assert!(types.severity < value.severity);
 }
+
+#[test]
+fn shapes_respect_fenced_boundaries_and_count_validators() {
+    let (_dir, findings) = scan_fixture("shapes");
+    let shape_findings: Vec<&Finding> = findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.pattern_type,
+                PatternType::InterfaceSprawl | PatternType::Lexicon
+            )
+        })
+        .collect();
+    let files = |finding: &Finding| -> Vec<String> {
+        finding.locations.iter().map(|location| location.file.clone()).collect()
+    };
+    // The validator joins the hand-written duplicates inside the app boundary.
+    let app = shape_findings
+        .iter()
+        .find(|finding| files(finding).iter().any(|file| file == "convex/threads.ts"))
+        .expect("validator duplicates the interfaces");
+    assert!(files(app).iter().any(|file| file == "components/thread-row.tsx"));
+    assert!(app.title.starts_with("[app]"), "{}", app.title);
+    // Nothing crosses the inbox fence.
+    for finding in &shape_findings {
+        let touches_inbox = files(finding).iter().any(|file| file.starts_with("packages/inbox/"));
+        let touches_app = files(finding).iter().any(|file| !file.starts_with("packages/inbox/"));
+        assert!(!(touches_inbox && touches_app), "crossed the fence: {}", finding.title);
+    }
+    // Glossary: `draft` names a held reply and a bag of reply inputs.
+    assert!(
+        shape_findings
+            .iter()
+            .any(|finding| finding.title.contains("`draft` names 2 different concepts")),
+        "{:#?}",
+        shape_findings.iter().map(|f| f.title.clone()).collect::<Vec<_>>()
+    );
+    // Acronym names are not "resource smash" by default.
+    assert!(!shape_findings.iter().any(|finding| finding.title.contains("ThreadUIAction")));
+}

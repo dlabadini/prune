@@ -454,6 +454,194 @@ fn to_pascal_case(value: &str) -> String {
     out
 }
 
+/// Whether a callee builds an object validator (`v.object`, `z.object`, `z.strictObject`).
+pub fn is_object_validator_callee(callee: &str) -> bool {
+    let mut parts = callee.split('.');
+    let root = parts.next().unwrap_or("");
+    let method = callee.rsplit('.').next().unwrap_or("");
+    matches!(root, "v" | "z")
+        && matches!(method, "object" | "strictObject" | "looseObject" | "passthrough" | "strict")
+}
+
+/// Read a Convex (`v.object({...})`) or zod (`z.object({...})`) validator as a type shape, so a
+/// validator and a hand-written interface with the same fields are recognized as one concept.
+///
+/// `source` is the declarator text (`vThread = v.object({ ... })`).
+pub fn parse_validator_definition(source: &str, name: &str) -> Option<ParsedTypeDef> {
+    use oxc_ast::ast::Statement as Stmt;
+    let text = format!("const {source};");
+    let allocator = Allocator::default();
+    let result = OxcParser::new(&allocator, &text, SourceType::tsx()).parse();
+    if !result.diagnostics.is_empty() {
+        return None;
+    }
+    for statement in &result.program.body {
+        let declaration = match statement {
+            Stmt::VariableDeclaration(decl) => decl,
+            _ => continue,
+        };
+        for declarator in &declaration.declarations {
+            let Some(init) = &declarator.init else {
+                continue;
+            };
+            let (shape, _) = validator_shape(init);
+            if let TypeShape::AnonymousObject(fields) = shape {
+                let is_object_like = !fields.is_empty();
+                return Some(ParsedTypeDef {
+                    name: validator_concept_name(name),
+                    kind: SymbolKind::Variable,
+                    fields,
+                    extends: Vec::new(),
+                    is_object_like,
+                    is_boilerplate: false,
+                });
+            }
+        }
+    }
+    None
+}
+
+/// `vThreadRow` → `ThreadRow`, `threadSchema` → `Thread`, `ThreadValidator` → `Thread`.
+pub fn validator_concept_name(name: &str) -> String {
+    let mut base = name;
+    for suffix in ["Validator", "Schema", "Shape"] {
+        if let Some(stripped) = base.strip_suffix(suffix) {
+            if !stripped.is_empty() {
+                base = stripped;
+                break;
+            }
+        }
+    }
+    let mut chars = base.chars();
+    if let (Some('v'), Some(second)) = (chars.next(), chars.clone().next()) {
+        if second.is_uppercase() {
+            base = &base[1..];
+        }
+    }
+    let mut chars = base.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+        None => name.to_string(),
+    }
+}
+
+/// Shape of a validator expression, and whether it marks its field optional.
+fn validator_shape(expr: &oxc_ast::ast::Expression<'_>) -> (TypeShape, bool) {
+    use oxc_ast::ast::{Argument, Expression, ObjectPropertyKind, PropertyKey};
+    let expr = expr.get_inner_expression();
+    match expr {
+        Expression::Identifier(ident) => {
+            (TypeShape::Reference(validator_concept_name(ident.name.as_str())), false)
+        }
+        Expression::CallExpression(call) => {
+            let Expression::StaticMemberExpression(member) = call.callee.get_inner_expression() else {
+                return (TypeShape::Other("call".to_string()), false);
+            };
+            let method = member.property.name.as_str();
+            let arg = |index: usize| -> Option<&Expression<'_>> {
+                call.arguments.get(index).and_then(Argument::as_expression)
+            };
+            // Chained zod modifiers: `z.string().optional()`, `.nullable()`, `.min(1)`.
+            if let Expression::CallExpression(_) = member.object.get_inner_expression() {
+                let (inner, optional) = validator_shape(&member.object);
+                return match method {
+                    "optional" | "nullish" => (inner, true),
+                    "nullable" => (TypeShape::Union(vec![inner, TypeShape::Primitive("null".into())]), optional),
+                    "array" => (TypeShape::Array(Box::new(inner)), optional),
+                    _ => (inner, optional),
+                };
+            }
+            match method {
+                "string" | "email" | "url" | "uuid" => (TypeShape::Primitive("string".into()), false),
+                "number" | "float64" | "int" => (TypeShape::Primitive("number".into()), false),
+                "int64" | "bigint" => (TypeShape::Primitive("bigint".into()), false),
+                "boolean" => (TypeShape::Primitive("boolean".into()), false),
+                "null" => (TypeShape::Primitive("null".into()), false),
+                "any" => (TypeShape::Primitive("any".into()), false),
+                "unknown" => (TypeShape::Primitive("unknown".into()), false),
+                "id" => {
+                    let table = match arg(0) {
+                        Some(Expression::StringLiteral(lit)) => lit.value.to_string(),
+                        _ => "unknown".into(),
+                    };
+                    (TypeShape::Reference(format!("Id<{table}>")), false)
+                }
+                "literal" => {
+                    let value = match arg(0) {
+                        Some(Expression::StringLiteral(lit)) => lit.value.to_string(),
+                        Some(Expression::NumericLiteral(lit)) => lit.value.to_string(),
+                        Some(Expression::BooleanLiteral(lit)) => lit.value.to_string(),
+                        _ => "literal".into(),
+                    };
+                    (TypeShape::Literal(value), false)
+                }
+                "optional" => match arg(0) {
+                    Some(inner) => (validator_shape(inner).0, true),
+                    None => (TypeShape::Other("optional".into()), true),
+                },
+                "nullable" => match arg(0) {
+                    Some(inner) => (
+                        TypeShape::Union(vec![validator_shape(inner).0, TypeShape::Primitive("null".into())]),
+                        false,
+                    ),
+                    None => (TypeShape::Other("nullable".into()), false),
+                },
+                "array" => match arg(0) {
+                    Some(inner) => (TypeShape::Array(Box::new(validator_shape(inner).0)), false),
+                    None => (TypeShape::Other("array".into()), false),
+                },
+                "union" | "enum" => {
+                    let mut shapes: Vec<TypeShape> = call
+                        .arguments
+                        .iter()
+                        .filter_map(Argument::as_expression)
+                        .map(|item| validator_shape(item).0)
+                        .collect();
+                    // `z.enum(["a", "b"])`
+                    if let Some(Expression::ArrayExpression(array)) = arg(0) {
+                        shapes = array
+                            .elements
+                            .iter()
+                            .filter_map(|element| element.as_expression())
+                            .map(|item| match item {
+                                Expression::StringLiteral(lit) => TypeShape::Literal(lit.value.to_string()),
+                                other => validator_shape(other).0,
+                            })
+                            .collect();
+                    }
+                    (TypeShape::Union(shapes), false)
+                }
+                "object" | "strictObject" | "looseObject" => {
+                    let Some(Expression::ObjectExpression(object)) = arg(0) else {
+                        return (TypeShape::Other("object".into()), false);
+                    };
+                    let fields = object
+                        .properties
+                        .iter()
+                        .filter_map(|property| match property {
+                            ObjectPropertyKind::ObjectProperty(property) => {
+                                let name = match &property.key {
+                                    PropertyKey::StaticIdentifier(id) => id.name.to_string(),
+                                    PropertyKey::StringLiteral(lit) => lit.value.to_string(),
+                                    _ => return None,
+                                };
+                                let (shape, optional) = validator_shape(&property.value);
+                                Some(TypeField { name, optional, shape })
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    (TypeShape::AnonymousObject(fields), false)
+                }
+                "record" => (TypeShape::Other("record".into()), false),
+                _ => (TypeShape::Other(method.to_string()), false),
+            }
+        }
+        Expression::StringLiteral(lit) => (TypeShape::Literal(lit.value.to_string()), false),
+        _ => (TypeShape::Other("complex".into()), false),
+    }
+}
+
 fn ts_literal_signature(literal: &oxc_ast::ast::TSLiteral<'_>) -> String {
     use oxc_ast::ast::TSLiteral;
     match literal {
@@ -473,6 +661,35 @@ fn ts_literal_signature(literal: &oxc_ast::ast::TSLiteral<'_>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validator_and_interface_share_a_signature() {
+        let validator = parse_validator_definition(
+            r#"vThreadRow = v.object({ id: v.id("thread"), subject: v.string(), unread: v.optional(v.number()), kind: v.union(v.literal("a"), v.literal("b")) })"#,
+            "vThreadRow",
+        )
+        .unwrap();
+        let interface = parse_type_definition(
+            r#"interface ThreadRow { id: Id<"thread">; subject: string; unread?: number; kind: "a" | "b" }"#,
+            "ThreadRow",
+            SymbolKind::Interface,
+        )
+        .unwrap();
+        assert_eq!(validator.name, "ThreadRow");
+        assert_eq!(
+            bundle_signature(&top_level_bindings(&validator)),
+            bundle_signature(&top_level_bindings(&interface))
+        );
+        let zod = parse_validator_definition(
+            r#"ThreadSchema = z.object({ id: z.string(), subject: z.string().optional() })"#,
+            "ThreadSchema",
+        )
+        .unwrap();
+        assert!(zod.fields[1].optional);
+        assert!(is_object_validator_callee("v.object"));
+        assert!(is_object_validator_callee("z.object"));
+        assert!(!is_object_validator_callee("Object.freeze"));
+    }
 
     #[test]
     fn parses_interface_with_nested_object() {

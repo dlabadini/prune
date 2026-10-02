@@ -17,7 +17,7 @@ use crate::compose::{
     MemberInput, SprawlComposeInput,
 };
 use crate::config::Config;
-use crate::db::{Database, SymbolKind};
+use crate::db::{Database, Symbol, SymbolKind};
 
 pub struct InterfaceSprawlDetector;
 
@@ -27,13 +27,7 @@ impl PatternDetector for InterfaceSprawlDetector {
     }
 
     fn detect(&self, db: &Database, config: &Config) -> Vec<Finding> {
-        let mut type_symbols = Vec::new();
-        if let Ok(interfaces) = db.get_symbols_by_kind(SymbolKind::Interface) {
-            type_symbols.extend(interfaces);
-        }
-        if let Ok(type_aliases) = db.get_symbols_by_kind(SymbolKind::TypeAlias) {
-            type_symbols.extend(type_aliases);
-        }
+        let type_symbols = shape_symbols(db);
 
         let min_cluster_size = config.effective_interface_sprawl_min_cluster();
         if type_symbols.len() < min_cluster_size {
@@ -64,9 +58,11 @@ impl PatternDetector for InterfaceSprawlDetector {
         clusters.extend(detect_legacy_text_clusters(&unindexed, &detection_config));
         let max_findings = config.effective_interface_sprawl_max_findings();
 
-        let mut findings = clusters
+        let mut findings = split_by_boundaries(db, config, clusters)
             .into_iter()
-            .filter_map(|cluster| cluster_to_finding(db, &cluster))
+            .filter_map(|(cluster, boundary)| {
+                cluster_to_finding(db, &cluster).map(|finding| label_boundary(finding, boundary))
+            })
             .collect::<Vec<_>>();
 
         findings.sort_by(|left, right| {
@@ -83,6 +79,77 @@ impl PatternDetector for InterfaceSprawlDetector {
         findings.truncate(max_findings);
         findings
     }
+}
+
+/// Interfaces, object type aliases, and object validators (`v.object`, `z.object`).
+pub fn shape_symbols(db: &Database) -> Vec<Symbol> {
+    let mut symbols = Vec::new();
+    if let Ok(interfaces) = db.get_symbols_by_kind(SymbolKind::Interface) {
+        symbols.extend(interfaces);
+    }
+    if let Ok(type_aliases) = db.get_symbols_by_kind(SymbolKind::TypeAlias) {
+        symbols.extend(type_aliases);
+    }
+    if let Ok(variables) = db.get_symbols_by_kind(SymbolKind::Variable) {
+        symbols.extend(variables.into_iter().filter(|symbol| {
+            symbol
+                .callee
+                .as_deref()
+                .is_some_and(type_shape::is_object_validator_callee)
+        }));
+    }
+    symbols
+}
+
+/// Clusters that may be reported, split at fenced boundaries, with their boundary name.
+fn split_by_boundaries(
+    db: &Database,
+    config: &Config,
+    clusters: Vec<SprawlCluster>,
+) -> Vec<(SprawlCluster, Option<String>)> {
+    if config.boundaries.is_empty() {
+        return clusters.into_iter().map(|cluster| (cluster, None)).collect();
+    }
+    let mut out = Vec::new();
+    for cluster in clusters {
+        let paths: Vec<String> = cluster
+            .members
+            .iter()
+            .map(|member| {
+                db.get_file_path(member.symbol.file_id)
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default()
+            })
+            .collect();
+        let refs: Vec<&str> = paths.iter().map(String::as_str).collect();
+        let groups = config.partition_by_boundary(&refs);
+        if groups.len() == 1 {
+            let (label, _) = groups.into_iter().next().unwrap_or((None, Vec::new()));
+            out.push((cluster, label));
+            continue;
+        }
+        for (label, indexes) in groups {
+            if indexes.len() < 2 {
+                continue;
+            }
+            let mut part = cluster.clone();
+            part.members = indexes
+                .iter()
+                .map(|index| cluster.members[*index].clone())
+                .collect();
+            out.push((part, label));
+        }
+    }
+    out
+}
+
+pub fn label_boundary(mut finding: Finding, boundary: Option<String>) -> Finding {
+    if let Some(name) = boundary {
+        finding.title = format!("[{name}] {}", finding.title);
+        finding.related_concepts.push(format!("boundary:{name}"));
+    }
+    finding
 }
 
 fn cluster_to_finding(db: &Database, cluster: &SprawlCluster) -> Option<Finding> {

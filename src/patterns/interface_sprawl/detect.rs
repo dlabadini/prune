@@ -1,10 +1,10 @@
 //! Structural overlap and composable bundle detection.
 
 use super::type_shape::{
-    bundle_signature, infer_bundle_name, parse_type_definition, top_level_bindings, FieldBinding,
-    NestedSlot, ParsedTypeDef,
+    bundle_signature, infer_bundle_name, parse_type_definition, parse_validator_definition,
+    top_level_bindings, FieldBinding, NestedSlot, ParsedTypeDef,
 };
-use crate::db::Symbol;
+use crate::db::{Symbol, SymbolKind};
 use crate::patterns::{candidate_pairs, simhash};
 use std::collections::{HashMap, HashSet};
 
@@ -49,7 +49,11 @@ pub struct DetectionConfig {
 }
 
 fn symbol_to_indexed(symbol: &Symbol) -> Option<IndexedType> {
-    let parsed = parse_type_definition(&symbol.source_text, &symbol.name, symbol.kind)?;
+    let parsed = if symbol.kind == SymbolKind::Variable {
+        parse_validator_definition(&symbol.source_text, &symbol.name)?
+    } else {
+        parse_type_definition(&symbol.source_text, &symbol.name, symbol.kind)?
+    };
     let bindings = top_level_bindings(&parsed);
     Some(IndexedType {
         symbol: symbol.clone(),
@@ -746,7 +750,6 @@ fn capitalize(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::{Symbol, SymbolKind};
 
     fn indexed(source: &str, name: &str, id: i64, file_id: i64) -> IndexedType {
         let parsed = parse_type_definition(source, name, SymbolKind::Interface).unwrap();

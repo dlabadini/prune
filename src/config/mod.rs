@@ -256,6 +256,35 @@ pub struct Config {
     /// Dead code reporting
     #[serde(default)]
     pub dead_exports: DeadCodeConfig,
+    /// Lexicon: glossary and naming heuristics
+    #[serde(default)]
+    pub lexicon: LexiconConfig,
+    /// Named path groups. A fenced boundary owns its types: duplicate shapes across its fence
+    /// are intentional and are not reported; duplicates inside it are.
+    #[serde(default)]
+    pub boundaries: Vec<Boundary>,
+}
+
+/// A named group of paths (a package, a layer) with its own rules.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Boundary {
+    pub name: String,
+    pub paths: Vec<String>,
+    /// Owns its types; cross-boundary duplicate shapes are intentional.
+    #[serde(default)]
+    pub fenced: bool,
+}
+
+/// Lexicon settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LexiconConfig {
+    /// Term → meaning. A term used in names of two unrelated shapes is flagged.
+    #[serde(default)]
+    pub glossary: std::collections::BTreeMap<String, String>,
+    /// Flag identifiers that pack many resource tokens (`RaceEntrantTransferClaim`). Off by
+    /// default: names like `ThreadUIAction` are fine.
+    #[serde(default)]
+    pub smash_names: bool,
 }
 
 impl Default for Config {
@@ -269,6 +298,8 @@ impl Default for Config {
             entries: EntriesConfig::default(),
             frameworks: FrameworksConfig::default(),
             dead_exports: DeadCodeConfig::default(),
+            lexicon: LexiconConfig::default(),
+            boundaries: Vec::new(),
         }
     }
 }
@@ -438,6 +469,48 @@ impl Config {
             .test_files
             .iter()
             .any(|pattern| glob_match(pattern, rel_path))
+    }
+
+    /// The first boundary whose paths match.
+    pub fn boundary_of(&self, rel_path: &str) -> Option<&Boundary> {
+        self.boundaries.iter().find(|boundary| {
+            boundary
+                .paths
+                .iter()
+                .any(|pattern| glob_match(pattern, rel_path))
+        })
+    }
+
+    /// Split members of a duplicate group (by their file paths) into groups that may be
+    /// reported together. Members on different sides of a fenced boundary never are.
+    /// Returns (boundary name, member indexes).
+    pub fn partition_by_boundary(&self, paths: &[&str]) -> Vec<(Option<String>, Vec<usize>)> {
+        let names: Vec<Option<&Boundary>> = paths.iter().map(|path| self.boundary_of(path)).collect();
+        let distinct: std::collections::BTreeSet<Option<&str>> = names
+            .iter()
+            .map(|boundary| boundary.map(|b| b.name.as_str()))
+            .collect();
+        let fenced = names.iter().any(|boundary| boundary.is_some_and(|b| b.fenced));
+        if distinct.len() <= 1 || !fenced {
+            let label = if distinct.len() == 1 {
+                distinct.into_iter().next().flatten().map(String::from)
+            } else {
+                None
+            };
+            return vec![(label, (0..paths.len()).collect())];
+        }
+        distinct
+            .into_iter()
+            .map(|name| {
+                let members = names
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, boundary)| boundary.map(|b| b.name.as_str()) == name)
+                    .map(|(index, _)| index)
+                    .collect();
+                (name.map(String::from), members)
+            })
+            .collect()
     }
 
     /// Check if a pattern is enabled
@@ -670,6 +743,35 @@ mod tests {
     fn omitted_exclude_keeps_defaults() {
         let config: Config = toml::from_str("strictness = \"strict\"\n").unwrap();
         assert!(config.exclude.iter().any(|pattern| pattern == ".prune/**"));
+    }
+
+    #[test]
+    fn fenced_boundaries_split_duplicate_groups() {
+        let config: Config = toml::from_str(
+            r#"
+[[boundaries]]
+name = "inbox"
+paths = ["packages/inbox/**"]
+fenced = true
+
+[[boundaries]]
+name = "app"
+paths = ["components/**", "convex/**"]
+"#,
+        )
+        .unwrap();
+        let groups = config.partition_by_boundary(&[
+            "packages/inbox/a.ts",
+            "packages/inbox/b.ts",
+            "components/c.tsx",
+            "convex/d.ts",
+        ]);
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains(&(Some("inbox".into()), vec![0, 1])));
+        assert!(groups.contains(&(Some("app".into()), vec![2, 3])));
+        // No fence involved: one group.
+        let groups = config.partition_by_boundary(&["components/c.tsx", "convex/d.ts", "lib/e.ts"]);
+        assert_eq!(groups, vec![(None, vec![0, 1, 2])]);
     }
 
     #[test]
