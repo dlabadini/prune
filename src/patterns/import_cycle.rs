@@ -63,8 +63,9 @@ impl PatternDetector for ImportCycleDetector {
             findings.push(cycle_finding(&files, CycleKind::Value));
         }
         for component in components(&all_edges) {
-            // Report the type-only part: a component no value cycle already covers.
-            if component.iter().all(|id| in_value_cycle.contains(id)) {
+            // A component that contains a value cycle is reported as that value cycle; only
+            // components held together by type edges alone are type-only cycles.
+            if component.iter().any(|id| in_value_cycle.contains(id)) {
                 continue;
             }
             let files = paths(&graph, &component);
