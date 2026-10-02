@@ -90,6 +90,143 @@ pub struct PatternThresholds {
     /// Threshold for dead export detection grace period (days)
     #[serde(default)]
     pub dead_export_grace_days: Option<u32>,
+    /// Report a file once it has at least this many dead exports (default 1)
+    #[serde(default)]
+    pub dead_exports_min_per_file: Option<usize>,
+}
+
+/// Where the program starts. Anything not reachable from an entry is dead.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntriesConfig {
+    /// Extra entry globs (repo-relative). Every export of an entry file counts as used.
+    #[serde(default)]
+    pub files: Vec<String>,
+    /// Globs for test files. They are indexed only as reference sources, even when `exclude`
+    /// matches them, so an export used only by tests is reported as test-only, not unused.
+    #[serde(default = "default_test_files")]
+    pub test_files: Vec<String>,
+    /// Read test files for references (set false to ignore tests entirely).
+    #[serde(default = "default_true")]
+    pub index_tests: bool,
+    /// Treat every export of a `"private": true` package entry as public API.
+    #[serde(default)]
+    pub private_package_exports_are_api: bool,
+}
+
+impl Default for EntriesConfig {
+    fn default() -> Self {
+        Self {
+            files: Vec::new(),
+            test_files: default_test_files(),
+            index_tests: true,
+            private_package_exports_are_api: false,
+        }
+    }
+}
+
+/// Framework adapters: entry conventions expressed as data.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FrameworksConfig {
+    #[serde(default)]
+    pub next: NextConfig,
+    #[serde(default)]
+    pub convex: ConvexConfig,
+}
+
+/// Next.js App Router conventions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NextConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// App roots (directories holding `next.config.*`). Empty = every `next.config.*` found.
+    #[serde(default)]
+    pub roots: Vec<String>,
+    /// File stems under `app/` that Next loads (`page.tsx`, `route.ts`, ...).
+    #[serde(default = "default_next_app_entries")]
+    pub app_entries: Vec<String>,
+    /// File stems at the app root (or `src/`) that Next loads.
+    #[serde(default = "default_next_root_entries")]
+    pub root_entries: Vec<String>,
+}
+
+impl Default for NextConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            roots: Vec::new(),
+            app_entries: default_next_app_entries(),
+            root_entries: default_next_root_entries(),
+        }
+    }
+}
+
+/// Convex conventions: function modules, generated `api`/`internal` references.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvexConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Convex function directories. Empty = `convex.json` `functions`, else `convex/`.
+    #[serde(default)]
+    pub dirs: Vec<String>,
+    /// Exact builder names that register a Convex function.
+    #[serde(default = "default_convex_builders")]
+    pub function_builders: Vec<String>,
+    /// Builder name suffixes that register a Convex function (`adminQuery`, `manageMutation`).
+    #[serde(default = "default_convex_builder_suffixes")]
+    pub builder_suffixes: Vec<String>,
+    /// Module names (relative to a Convex dir, no extension) Convex itself loads.
+    #[serde(default = "default_convex_entry_modules")]
+    pub entry_modules: Vec<String>,
+}
+
+impl Default for ConvexConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            dirs: Vec::new(),
+            function_builders: default_convex_builders(),
+            builder_suffixes: default_convex_builder_suffixes(),
+            entry_modules: default_convex_entry_modules(),
+        }
+    }
+}
+
+impl ConvexConfig {
+    /// Whether `callee` (as written: `query`, `zCustomQuery`, `ctx.adminQuery`) registers a function.
+    pub fn is_function_builder(&self, callee: &str) -> bool {
+        let last = callee.rsplit('.').next().unwrap_or(callee);
+        if self.function_builders.iter().any(|name| name == last) {
+            return true;
+        }
+        let lower = last.to_ascii_lowercase();
+        self.builder_suffixes
+            .iter()
+            .any(|suffix| lower.ends_with(&suffix.to_ascii_lowercase()) && lower.len() > suffix.len())
+    }
+}
+
+/// Which dead-code classes become findings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeadCodeConfig {
+    /// Report files no entry reaches.
+    #[serde(default = "default_true")]
+    pub report_unreachable_files: bool,
+    /// Report exports only tests use.
+    #[serde(default = "default_true")]
+    pub report_test_only: bool,
+    /// Report exports only used inside their own file (drop the `export`).
+    #[serde(default = "default_true")]
+    pub report_same_file: bool,
+}
+
+impl Default for DeadCodeConfig {
+    fn default() -> Self {
+        Self {
+            report_unreachable_files: true,
+            report_test_only: true,
+            report_same_file: true,
+        }
+    }
 }
 
 /// Main configuration struct
@@ -110,6 +247,15 @@ pub struct Config {
     /// Patterns to disable entirely
     #[serde(default)]
     pub disabled_patterns: Vec<String>,
+    /// Entry points for reachability
+    #[serde(default)]
+    pub entries: EntriesConfig,
+    /// Framework adapters (Next.js, Convex)
+    #[serde(default)]
+    pub frameworks: FrameworksConfig,
+    /// Dead code reporting
+    #[serde(default)]
+    pub dead_exports: DeadCodeConfig,
 }
 
 impl Default for Config {
@@ -120,6 +266,9 @@ impl Default for Config {
             exclude: default_exclude(),
             include: vec![],
             disabled_patterns: vec![],
+            entries: EntriesConfig::default(),
+            frameworks: FrameworksConfig::default(),
+            dead_exports: DeadCodeConfig::default(),
         }
     }
 }
@@ -279,6 +428,18 @@ impl Config {
             })
     }
 
+    pub fn effective_dead_exports_min_per_file(&self) -> usize {
+        self.thresholds.dead_exports_min_per_file.unwrap_or(1).max(1)
+    }
+
+    /// Whether a path is a test file (indexed for references only, never reported).
+    pub fn is_test_path(&self, rel_path: &str) -> bool {
+        self.entries
+            .test_files
+            .iter()
+            .any(|pattern| glob_match(pattern, rel_path))
+    }
+
     /// Check if a pattern is enabled
     pub fn is_pattern_enabled(&self, pattern_name: &str) -> bool {
         !self.disabled_patterns.iter().any(|p| p == pattern_name)
@@ -365,6 +526,99 @@ fn pattern_covers(existing: &str, candidate: &str) -> bool {
         return candidate.starts_with(prefix) || candidate.contains(prefix);
     }
     false
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_test_files() -> Vec<String> {
+    [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.test.js",
+        "**/*.test.jsx",
+        "**/*.test.mts",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.spec.js",
+        "**/*.spec.jsx",
+        "**/__tests__/**",
+        "**/__mocks__/**",
+        "e2e/**",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn default_next_app_entries() -> Vec<String> {
+    [
+        "page",
+        "layout",
+        "route",
+        "loading",
+        "error",
+        "global-error",
+        "global-not-found",
+        "not-found",
+        "forbidden",
+        "unauthorized",
+        "template",
+        "default",
+        "opengraph-image",
+        "twitter-image",
+        "icon",
+        "apple-icon",
+        "sitemap",
+        "robots",
+        "manifest",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn default_next_root_entries() -> Vec<String> {
+    [
+        "middleware",
+        "proxy",
+        "instrumentation",
+        "instrumentation-client",
+        "mdx-components",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn default_convex_builders() -> Vec<String> {
+    [
+        "query",
+        "mutation",
+        "action",
+        "internalQuery",
+        "internalMutation",
+        "internalAction",
+        "httpAction",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+fn default_convex_builder_suffixes() -> Vec<String> {
+    ["Query", "Mutation", "Action"]
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
+fn default_convex_entry_modules() -> Vec<String> {
+    ["schema", "http", "crons", "convex.config", "auth.config"]
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 fn default_exclude() -> Vec<String> {

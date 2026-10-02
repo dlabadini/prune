@@ -1,14 +1,14 @@
 //! Codebase analyzer using tree-sitter for parsing
 
 mod indexer;
-mod parser;
+pub mod parser;
 
 use oxc_resolver::{ResolveOptions, Resolver, TsconfigDiscovery};
 
 pub use indexer::Indexer;
 
 use crate::config::Config;
-use crate::db::Database;
+use crate::db::{Database, FileRole};
 use crate::patterns::{run_all_detectors, Finding};
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
@@ -126,7 +126,8 @@ impl Analyzer {
         let mut files_changed = 0;
         let total = files.len();
 
-        for file_path in &files {
+        for (file_path, role) in &files {
+            let role = *role;
             files_scanned += 1;
             report(ScanProgress::Indexing {
                 done: files_scanned,
@@ -135,8 +136,10 @@ impl Analyzer {
             });
 
             // Check if file has changed
-            let content = std::fs::read_to_string(file_path)?;
-            let hash = calculate_hash(&content);
+            let Ok(content) = std::fs::read_to_string(file_path) else {
+                continue;
+            };
+            let hash = format!("{}:{}", calculate_hash(&content), role.as_str());
             let rel_path = self.relative_path(file_path);
 
             let needs_reindex = match self.db.get_file_hash(&rel_path)? {
@@ -146,7 +149,7 @@ impl Analyzer {
 
             if needs_reindex {
                 files_changed += 1;
-                self.index_file(file_path, &content, &hash)?;
+                self.index_file(file_path, &content, &hash, role)?;
             }
         }
 
@@ -207,10 +210,16 @@ impl Analyzer {
             return Ok(());
         }
 
+        let rel_path = self.relative_path(file_path);
+        let role = if self.config.is_test_path(&rel_path) {
+            FileRole::Test
+        } else {
+            FileRole::Source
+        };
         let content = std::fs::read_to_string(file_path)?;
-        let hash = calculate_hash(&content);
+        let hash = format!("{}:{}", calculate_hash(&content), role.as_str());
 
-        self.index_file(file_path, &content, &hash)?;
+        self.index_file(file_path, &content, &hash, role)?;
         self.finalize_index(&mut |_| {})?;
         self.sync_embeddings()?;
         Ok(())
@@ -269,19 +278,22 @@ impl Analyzer {
     }
 
     /// Drop indexed files that are no longer scanned (excluded, deleted, or renamed).
-    fn purge_stale_indexed_files(&self, files: &[PathBuf]) -> Result<(), AnalyzerError> {
+    fn purge_stale_indexed_files(&self, files: &[(PathBuf, FileRole)]) -> Result<(), AnalyzerError> {
         let active: std::collections::HashSet<String> =
-            files.iter().map(|path| self.relative_path(path)).collect();
-        for file in self.db.get_all_files()? {
-            if !active.contains(&file.path) {
-                self.db.delete_file(&file.path)?;
+            files.iter().map(|(path, _)| self.relative_path(path)).collect();
+        for path in self.db.all_file_paths()? {
+            if !active.contains(&path) {
+                self.db.delete_file(&path)?;
             }
         }
         Ok(())
     }
 
-    /// Collect all source files to analyze
-    fn collect_files(&self) -> Result<Vec<PathBuf>, AnalyzerError> {
+    /// Collect all source files to analyze, with their role.
+    ///
+    /// Test files are read even when `exclude` matches them: they are never reported, but
+    /// their imports decide whether an export is used only by tests.
+    fn collect_files(&self) -> Result<Vec<(PathBuf, FileRole)>, AnalyzerError> {
         let mut files = Vec::new();
 
         let walker = WalkBuilder::new(&self.root)
@@ -305,13 +317,21 @@ impl Analyzer {
                 continue;
             }
 
-            // Check custom exclude patterns
             let rel_path = self.relative_path(path);
+            if path_has_segment(&rel_path, "node_modules") || rel_path.contains("/_generated/") {
+                continue;
+            }
+            if self.config.is_test_path(&rel_path) {
+                if self.config.entries.index_tests {
+                    files.push((path.to_path_buf(), FileRole::Test));
+                }
+                continue;
+            }
             if self.is_excluded(&rel_path) {
                 continue;
             }
 
-            files.push(path.to_path_buf());
+            files.push((path.to_path_buf(), FileRole::Source));
         }
 
         Ok(files)
@@ -323,113 +343,147 @@ impl Analyzer {
         file_path: &Path,
         content: &str,
         hash: &str,
+        role: FileRole,
     ) -> Result<(), AnalyzerError> {
         let rel_path = self.relative_path(file_path);
         let line_count = content.lines().count();
-
-        // Upsert file record
-        let file_id = self.db.upsert_file(&rel_path, hash, line_count)?;
-
-        // Clear existing symbols for this file
-        self.db.clear_file_symbols(file_id)?;
-
-        // Parse and extract symbols
         let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
         let indexed = self.indexer.index_source(content, ext)?;
 
-        for symbol in indexed.parsed.symbols {
-            self.db.insert_symbol(
-                file_id,
-                &symbol.name,
-                symbol.kind,
-                symbol.start_line,
-                symbol.end_line,
-                symbol.is_exported,
-                symbol.is_default,
-                &symbol.source_text,
-            )?;
-        }
+        self.db.transaction(|db| {
+            let file_id = db.upsert_file_with_role(&rel_path, hash, line_count, role)?;
+            db.clear_file_symbols(file_id)?;
 
-        for import in indexed.parsed.imports {
-            self.db.insert_import(
-                file_id,
-                None,
-                &import.target_path,
-                &import.imported_names,
-                import.is_type_only,
-                import.is_reexport,
-                import.import_all,
-                import.line,
-            )?;
-        }
-
-        for hit in indexed.structural {
-            self.db
-                .insert_structural_note(file_id, hit.kind, &hit.name, hit.line, &hit.detail)?;
-        }
-
-        for use_site in indexed.parsed.local_uses {
-            if let Some(symbol_id) =
-                self.db
-                    .find_symbol_at(file_id, &use_site.name, use_site.decl_line)?
-            {
-                self.db
-                    .insert_reference(symbol_id, file_id, use_site.use_line)?;
+            for import in &indexed.parsed.imports {
+                db.insert_import(file_id, import)?;
             }
-        }
+            for name_ref in &indexed.parsed.name_refs {
+                db.insert_name_ref(file_id, name_ref)?;
+            }
+            // Tests are reference sources only: no symbols, notes, or shapes to report.
+            if role == FileRole::Test {
+                return Ok(());
+            }
 
+            for symbol in &indexed.parsed.symbols {
+                db.insert_symbol_row(file_id, symbol)?;
+            }
+            for hit in &indexed.structural {
+                db.insert_structural_note(file_id, hit.kind, &hit.name, hit.line, &hit.detail)?;
+            }
+            for use_site in &indexed.parsed.local_uses {
+                if let Some(symbol_id) =
+                    db.find_symbol_at(file_id, &use_site.name, use_site.decl_line)?
+                {
+                    db.insert_reference(symbol_id, file_id, use_site.use_line)?;
+                }
+            }
+            Ok(())
+        })?;
         Ok(())
     }
 
-    /// Resolve imports and record cross-file references.
+    /// Resolve imports, entries, and framework references into the derived tables.
     fn finalize_index(
         &mut self,
         _report: &mut dyn FnMut(ScanProgress),
     ) -> Result<(), AnalyzerError> {
-        self.db.clear_refs()?;
+        let root = std::fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
         let edges = self.db.import_edges()?;
-        for edge in edges {
-            let absolute = self.root.join(&edge.source_path);
-            let full = match self.resolver.resolve_file(&absolute, &edge.specifier) {
-                Ok(resolved) => resolved.full_path(),
-                Err(_) => match resolve_relative_import(&absolute, &edge.specifier) {
-                    Some(path) => path,
-                    None => continue,
-                },
-            };
-            let root = std::fs::canonicalize(&self.root).unwrap_or_else(|_| self.root.clone());
-            let full = std::fs::canonicalize(&full).unwrap_or(full);
-            let Some(relative) = full
-                .strip_prefix(&root)
-                .ok()
-                .map(|path| path.to_string_lossy().replace('\\', "/"))
-            else {
-                continue;
-            };
-            let Some(target_id) = self.db.get_file_id(&relative)? else {
-                continue;
-            };
-            self.db.set_import_target(edge.id, target_id)?;
-
-            let symbol_ids = if edge.import_all {
-                self.db.exported_symbol_ids(target_id)?
-            } else {
-                let mut ids = Vec::new();
-                for name in &edge.imported_names {
-                    if let Some(id) = self.db.find_export(target_id, name)? {
-                        ids.push(id);
-                    }
+        let mut targets: Vec<(i64, i64)> = Vec::new();
+        let mut cache: std::collections::HashMap<(String, String), Option<i64>> =
+            std::collections::HashMap::new();
+        for edge in &edges {
+            let dir = parent_of(&edge.source_path).to_string();
+            let key = (dir, edge.specifier.clone());
+            let target = match cache.get(&key) {
+                Some(found) => *found,
+                None => {
+                    let found = self.resolve_specifier(&root, &edge.source_path, &edge.specifier)?;
+                    cache.insert(key, found);
+                    found
                 }
-                ids
             };
-            for symbol_id in symbol_ids {
-                self.db
-                    .insert_reference(symbol_id, edge.source_file_id, edge.line)?;
+            if let Some(target_id) = target {
+                targets.push((edge.id, target_id));
             }
         }
 
+        self.db.transaction(|db| {
+            db.clear_refs()?;
+            for (edge_id, target_id) in &targets {
+                db.set_import_target(*edge_id, *target_id)?;
+            }
+            Ok(())
+        })?;
+
+        let graph = crate::graph::ModuleGraph::load(&self.db)?;
+        let name_refs = self.db.name_refs()?;
+        let plan = crate::entries::discover(&self.root, &self.config, &graph, &name_refs);
+        let uses = graph.import_uses();
+
+        self.db.transaction(|db| {
+            for item in &uses {
+                db.insert_derived_reference(item.symbol_id, item.file_id, item.line)?;
+            }
+            for (symbol_id, file_id, line) in &plan.uses {
+                db.insert_derived_reference(*symbol_id, *file_id, *line)?;
+            }
+            for (file_id, reason) in &plan.entries {
+                db.insert_entry(*file_id, reason)?;
+            }
+            for (file_id, reason) in &plan.root_files {
+                for symbol_id in graph.all_exports(*file_id) {
+                    db.insert_symbol_root(symbol_id, reason)?;
+                }
+            }
+            for (symbol_id, reason) in &plan.root_symbols {
+                db.insert_symbol_root(*symbol_id, reason)?;
+            }
+            for (symbol_id, tag) in &plan.tags {
+                db.insert_symbol_tag(*symbol_id, tag)?;
+            }
+            Ok(())
+        })?;
+
         Ok(())
+    }
+
+    /// Resolve an import specifier from `source_path` to an indexed file id.
+    fn resolve_specifier(
+        &self,
+        root: &Path,
+        source_path: &str,
+        specifier: &str,
+    ) -> Result<Option<i64>, AnalyzerError> {
+        let absolute = self.root.join(source_path);
+        let full = match self.resolver.resolve_file(&absolute, specifier) {
+            Ok(resolved) => resolved.full_path(),
+            Err(_) => match resolve_relative_import(&absolute, specifier) {
+                Some(path) => path,
+                None => return Ok(None),
+            },
+        };
+        let full = std::fs::canonicalize(&full).unwrap_or(full);
+        let Some(relative) = full
+            .strip_prefix(root)
+            .ok()
+            .map(|path| path.to_string_lossy().replace('\\', "/"))
+        else {
+            return Ok(None);
+        };
+        if let Some(id) = self.db.get_file_id(&relative)? {
+            return Ok(Some(id));
+        }
+        // `types` conditions land on `.d.ts`; prefer the source next to it.
+        if let Some(base) = relative.strip_suffix(".d.ts") {
+            for ext in ["ts", "tsx", "js"] {
+                if let Some(id) = self.db.get_file_id(&format!("{base}.{ext}"))? {
+                    return Ok(Some(id));
+                }
+            }
+        }
+        Ok(None)
     }
 
     /// Get relative path from root
@@ -458,6 +512,14 @@ impl Analyzer {
         self.config.excludes_path(rel_path)
     }
 
+}
+
+fn parent_of(path: &str) -> &str {
+    path.rsplit_once('/').map(|(dir, _)| dir).unwrap_or("")
+}
+
+fn path_has_segment(path: &str, segment: &str) -> bool {
+    path.split('/').any(|part| part == segment)
 }
 
 fn is_supported_extension(ext: &str) -> bool {

@@ -762,6 +762,7 @@ mod tests {
                 is_exported: true,
                 is_default: false,
                 source_text: source.to_string(),
+                callee: None,
             },
             parsed,
             bindings,

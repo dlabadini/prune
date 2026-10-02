@@ -177,8 +177,7 @@ mod tests {
             strictness: crate::config::Strictness::Default,
             thresholds: crate::config::PatternThresholds::default(),
             exclude: vec!["node_modules/**".to_string()],
-            include: vec![],
-            disabled_patterns: vec![],
+            ..Config::default()
         };
         let findings = vec![
             Finding::new(
