@@ -259,10 +259,22 @@ pub struct Config {
     /// Lexicon: glossary and naming heuristics
     #[serde(default)]
     pub lexicon: LexiconConfig,
+    /// Autofix settings
+    #[serde(default)]
+    pub fix: FixConfig,
     /// Named path groups. A fenced boundary owns its types: duplicate shapes across its fence
     /// are intentional and are not reported; duplicates inside it are.
     #[serde(default)]
     pub boundaries: Vec<Boundary>,
+}
+
+/// `prune fix` settings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FixConfig {
+    /// Command that must pass after each applied fix (`bun run typecheck`). A fix whose check
+    /// fails is reverted.
+    #[serde(default)]
+    pub check: Option<String>,
 }
 
 /// A named group of paths (a package, a layer) with its own rules.
@@ -299,6 +311,7 @@ impl Default for Config {
             frameworks: FrameworksConfig::default(),
             dead_exports: DeadCodeConfig::default(),
             lexicon: LexiconConfig::default(),
+            fix: FixConfig::default(),
             boundaries: Vec::new(),
         }
     }

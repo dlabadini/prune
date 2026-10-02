@@ -28,6 +28,61 @@ pub enum Commands {
         /// Run in watch mode (headless)
         #[arg(long)]
         watch: bool,
+
+        /// Report only findings missing from a baseline file (default .prune-baseline.json)
+        #[arg(long, num_args = 0..=1, default_missing_value = ".prune-baseline.json")]
+        baseline: Option<PathBuf>,
+
+        /// Report only findings in files changed since REF (default HEAD) and their dependents
+        #[arg(long, num_args = 0..=1, default_missing_value = "HEAD")]
+        changed: Option<String>,
+
+        /// Exit with status 1 when any finding is reported (use with --baseline in CI)
+        #[arg(long)]
+        ci: bool,
+    },
+
+    /// Write the current findings to a baseline file so CI reports only new ones
+    Baseline {
+        /// Baseline file to write
+        #[arg(long, short, default_value = ".prune-baseline.json")]
+        output: PathBuf,
+    },
+
+    /// Apply safe fixes (dry run unless --apply): drop unnecessary `export`, delete unreachable
+    /// files. Each applied fix is kept only if the check command passes.
+    Fix {
+        /// Write changes (default: print the plan)
+        #[arg(long)]
+        apply: bool,
+
+        /// Check command run after each fix (default: [fix] check in .prunerc)
+        #[arg(long)]
+        check: Option<String>,
+
+        /// Fix kinds: unexport, delete-file (default: both)
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
+
+        /// Limit to findings whose files match this path prefix
+        #[arg(long)]
+        path_prefix: Option<String>,
+    },
+
+    /// Rename a symbol across its importers (dry run unless --apply)
+    Rename {
+        /// File that declares the symbol (repo-relative)
+        file: String,
+        /// Current name
+        from: String,
+        /// New name
+        to: String,
+        /// Write changes (default: print the plan)
+        #[arg(long)]
+        apply: bool,
+        /// Check command run after the rename (default: [fix] check in .prunerc)
+        #[arg(long)]
+        check: Option<String>,
     },
 
     /// Generate a refactor plan for a specific finding

@@ -160,3 +160,119 @@ fn shapes_respect_fenced_boundaries_and_count_validators() {
     // Acronym names are not "resource smash" by default.
     assert!(!shape_findings.iter().any(|finding| finding.title.contains("ThreadUIAction")));
 }
+
+#[test]
+fn fix_unexports_and_reverts_on_failed_check() {
+    let (dir, findings) = scan_fixture("reachability");
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    analyzer.scan().unwrap();
+    let a_path = dir.path().join("packages/lib/src/a.ts");
+    let before = std::fs::read_to_string(&a_path).unwrap();
+
+    // A failing check reverts the edit.
+    let options = prune::fix::FixOptions {
+        apply: true,
+        check: Some("false".into()),
+        kinds: vec![prune::fix::FixKind::Unexport],
+        path_prefix: Some("packages/lib/".into()),
+    };
+    let report = prune::fix::run(dir.path(), analyzer.database(), &findings, &options).unwrap();
+    assert_eq!(report.reverted.len(), 1);
+    assert_eq!(std::fs::read_to_string(&a_path).unwrap(), before);
+
+    // A passing check keeps it.
+    let options = prune::fix::FixOptions {
+        check: Some("true".into()),
+        ..options
+    };
+    let report = prune::fix::run(dir.path(), analyzer.database(), &findings, &options).unwrap();
+    assert_eq!(report.applied, vec!["packages/lib/src/a.ts".to_string()]);
+    let after = std::fs::read_to_string(&a_path).unwrap();
+    assert!(after.contains("\nfunction sameFileA()"), "{after}");
+    assert!(after.contains("export function unusedA()"));
+}
+
+#[test]
+fn rename_follows_barrels_and_importers() {
+    let (dir, _) = scan_fixture("reachability");
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    analyzer.scan().unwrap();
+    let plan = prune::fix::plan_rename(
+        analyzer.database(),
+        dir.path(),
+        "packages/lib/src/b.ts",
+        "b",
+        "bValue",
+    )
+    .unwrap();
+    assert!(plan.refused.is_none());
+    let files = plan.files();
+    assert!(files.contains(&"packages/lib/src/b.ts".to_string()), "{files:?}");
+    assert!(files.contains(&"packages/lib/src/index.ts".to_string()), "{files:?}");
+    prune::fix::apply_rename(dir.path(), &plan, Some("true")).unwrap();
+    let barrel = std::fs::read_to_string(dir.path().join("packages/lib/src/index.ts")).unwrap();
+    assert!(barrel.contains("bValue as renamed"), "{barrel}");
+    // The importer uses the barrel's alias, which does not change.
+    let page = std::fs::read_to_string(dir.path().join("app/dashboard/page.tsx")).unwrap();
+    assert!(page.contains("renamed()"));
+
+    // Convex functions are refused.
+    let plan = prune::fix::plan_rename(
+        analyzer.database(),
+        dir.path(),
+        "convex/messages.ts",
+        "send",
+        "sendMessage",
+    )
+    .unwrap();
+    assert!(plan.refused.is_some());
+}
+
+#[test]
+fn baseline_reports_only_new_findings() {
+    let (dir, findings) = scan_fixture("reachability");
+    let baseline = prune::baseline::Baseline::from_findings(&findings);
+    std::fs::write(
+        dir.path().join("orphans/another.ts"),
+        "export function stray() { return 1; }\n",
+    )
+    .unwrap();
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    let fresh = baseline.new_findings(analyzer.scan().unwrap().findings);
+    assert_eq!(fresh.len(), 1, "{:#?}", fresh.iter().map(|f| &f.title).collect::<Vec<_>>());
+    assert!(fresh[0].title.contains("another.ts"));
+}
+
+#[test]
+fn changed_scope_includes_dependents() {
+    let (dir, findings) = scan_fixture("reachability");
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    analyzer.scan().unwrap();
+    let changed: std::collections::HashSet<String> =
+        ["packages/lib/src/a.ts".to_string()].into_iter().collect();
+    let scope = prune::baseline::with_dependents(analyzer.database(), &changed);
+    assert!(scope.contains("packages/lib/src/index.ts"));
+    assert!(scope.contains("app/dashboard/page.tsx"));
+    assert!(!scope.contains("convex/messages.ts"));
+    let scoped = prune::baseline::touching(findings, &scope);
+    assert!(scoped
+        .iter()
+        .all(|finding| finding.locations.iter().any(|l| scope.contains(&l.file))));
+    assert!(!scoped.is_empty());
+
+    // git-backed: an untracked file shows up as changed.
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir.path())
+            .output()
+            .unwrap()
+    };
+    if git(&["init", "-q"]).status.success() {
+        git(&["add", "-A"]);
+        git(&["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"]);
+        std::fs::write(dir.path().join("app/new.ts"), "export const x = 1;\n").unwrap();
+        let changed = prune::baseline::changed_files(dir.path(), "HEAD").unwrap();
+        assert!(changed.contains("app/new.ts"), "{changed:?}");
+    }
+}

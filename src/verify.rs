@@ -69,3 +69,30 @@ pub fn matching_findings<'a>(findings: &'a [Finding], finding_id: &str) -> Vec<&
         .filter(|finding| finding.id == finding_id || finding.id.starts_with(finding_id))
         .collect()
 }
+
+/// Result of running a project check command (typecheck, tests).
+#[derive(Debug, Clone, Serialize)]
+pub struct CheckOutcome {
+    pub command: String,
+    pub passed: bool,
+    /// Last lines of output, for the report.
+    pub tail: String,
+}
+
+/// Run `command` through the shell in `root`. A fix is kept only when this passes.
+pub fn run_check(root: &std::path::Path, command: &str) -> std::io::Result<CheckOutcome> {
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(root)
+        .output()?;
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    let lines: Vec<&str> = text.lines().collect();
+    let tail = lines[lines.len().saturating_sub(15)..].join("\n");
+    Ok(CheckOutcome {
+        command: command.to_string(),
+        passed: output.status.success(),
+        tail,
+    })
+}

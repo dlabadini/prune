@@ -4,11 +4,13 @@
 //! particularly those introduced by AI coding assistants.
 
 pub mod analyzer;
+pub mod baseline;
 pub mod compose;
 pub mod config;
 pub mod db;
 pub mod embeddings;
 pub mod entries;
+pub mod fix;
 pub mod gitinfo;
 pub mod graph;
 pub mod license;

@@ -27,7 +27,27 @@ fn main() {
     // If no command specified, launch TUI
     let result = match cli.command {
         None => tui::run(&root),
-        Some(Commands::Scan { json, watch }) => cmd_scan(&root, json, watch),
+        Some(Commands::Scan {
+            json,
+            watch,
+            baseline,
+            changed,
+            ci,
+        }) => cmd_scan(&root, json, watch, ScanFilter { baseline, changed, ci }),
+        Some(Commands::Baseline { output }) => cmd_baseline(&root, &output),
+        Some(Commands::Fix {
+            apply,
+            check,
+            only,
+            path_prefix,
+        }) => cmd_fix(&root, apply, check, only, path_prefix),
+        Some(Commands::Rename {
+            file,
+            from,
+            to,
+            apply,
+            check,
+        }) => cmd_rename(&root, &file, &from, &to, apply, check),
         Some(Commands::Plan {
             finding_id,
             copy,
@@ -73,12 +93,59 @@ fn cmd_mcp(root: &std::path::Path) -> io::Result<()> {
         .map_err(|error| io::Error::other(error.to_string()))
 }
 
-fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
+/// Which findings `scan` reports.
+struct ScanFilter {
+    baseline: Option<std::path::PathBuf>,
+    changed: Option<String>,
+    ci: bool,
+}
+
+fn cmd_baseline(root: &std::path::Path, output: &std::path::Path) -> io::Result<()> {
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    let result = analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
+    let path = if output.is_absolute() {
+        output.to_path_buf()
+    } else {
+        root.join(output)
+    };
+    prune::baseline::Baseline::from_findings(&result.findings).save(&path)?;
+    println!(
+        "Wrote {} findings to {}. Commit it; `prune scan --baseline --ci` then fails only on new findings.",
+        result.findings.len(),
+        path.display()
+    );
+    Ok(())
+}
+
+fn cmd_scan(
+    root: &std::path::Path,
+    json: bool,
+    watch: bool,
+    filter: ScanFilter,
+) -> io::Result<()> {
     let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
 
-    let result = analyzer
+    let mut result = analyzer
         .scan()
         .map_err(|e| io::Error::other(e.to_string()))?;
+    let total_findings = result.findings.len();
+    if let Some(path) = &filter.baseline {
+        let path = if path.is_absolute() {
+            path.clone()
+        } else {
+            root.join(path)
+        };
+        let baseline = prune::baseline::Baseline::load(&path).map_err(|error| {
+            io::Error::other(format!("cannot read baseline {}: {error}", path.display()))
+        })?;
+        result.findings = baseline.new_findings(std::mem::take(&mut result.findings));
+    }
+    if let Some(base) = &filter.changed {
+        let changed = prune::baseline::changed_files(root, base)?;
+        let scope = prune::baseline::with_dependents(analyzer.database(), &changed);
+        result.findings = prune::baseline::touching(std::mem::take(&mut result.findings), &scope);
+    }
+    let filtered = result.findings.len() != total_findings;
 
     if json {
         let output = serde_json::json!({
@@ -89,6 +156,7 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
             "total_lines": result.total_lines,
             "symbols_found": result.symbols_found,
             "scan_duration_ms": result.scan_duration_ms,
+            "total_findings": total_findings,
             "findings": result.findings,
         });
         println!("{}", serde_json::to_string_pretty(&output).unwrap());
@@ -116,6 +184,13 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
         let suggestions = prune::suggest::from_findings(&result.findings, &config);
         prune::suggest::print_suggestions(&suggestions);
 
+        if filtered {
+            println!(
+                "Showing {} of {} findings (baseline/changed filter).",
+                result.findings.len(),
+                total_findings
+            );
+        }
         if result.findings.is_empty() {
             println!("No issues found.");
         } else {
@@ -152,6 +227,51 @@ fn cmd_scan(root: &std::path::Path, json: bool, watch: bool) -> io::Result<()> {
         run_headless_watch(&mut analyzer)?;
     }
 
+    if filter.ci && !result.findings.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+fn cmd_fix(
+    root: &std::path::Path,
+    apply: bool,
+    check: Option<String>,
+    only: Vec<String>,
+    path_prefix: Option<String>,
+) -> io::Result<()> {
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    let result = analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
+    let options = prune::fix::FixOptions {
+        apply,
+        check: check.or_else(|| analyzer.config().fix.check.clone()),
+        kinds: prune::fix::FixKind::parse_list(&only),
+        path_prefix,
+    };
+    let report = prune::fix::run(root, analyzer.database(), &result.findings, &options)?;
+    print!("{}", report.render(apply));
+    Ok(())
+}
+
+fn cmd_rename(
+    root: &std::path::Path,
+    file: &str,
+    from: &str,
+    to: &str,
+    apply: bool,
+    check: Option<String>,
+) -> io::Result<()> {
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
+    let check = check.or_else(|| analyzer.config().fix.check.clone());
+    let plan = prune::fix::plan_rename(analyzer.database(), root, file, from, to)?;
+    print!("{}", plan.render());
+    if apply {
+        let outcome = prune::fix::apply_rename(root, &plan, check.as_deref())?;
+        println!("{outcome}");
+    } else {
+        println!("Dry run. Re-run with --apply to write.");
+    }
     Ok(())
 }
 

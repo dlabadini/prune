@@ -98,6 +98,11 @@ impl Analyzer {
         &self.root
     }
 
+    /// The project index.
+    pub fn database(&self) -> &Database {
+        &self.db
+    }
+
     /// Get the current configuration
     pub fn config(&self) -> &Config {
         &self.config
