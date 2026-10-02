@@ -638,6 +638,7 @@ fn default_test_files() -> Vec<String> {
         "**/*.spec.jsx",
         "**/__tests__/**",
         "**/__mocks__/**",
+        "**/__fixtures__/**",
         "e2e/**",
     ]
     .into_iter()
