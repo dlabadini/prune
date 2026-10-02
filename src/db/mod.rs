@@ -86,7 +86,7 @@ impl SymbolKind {
 }
 
 /// Bump when the parser or schema changes what is stored; the index is rebuilt.
-pub const INDEX_VERSION: i64 = 3;
+pub const INDEX_VERSION: i64 = 4;
 
 /// Whether a file is product code or only read for references (tests).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,6 +164,8 @@ pub struct FileRow {
     pub path: String,
     pub role: FileRole,
     pub line_count: usize,
+    /// Has a `#!` line.
+    pub executable: bool,
 }
 
 /// An ast-grep hit stored with the file it came from.
@@ -252,7 +254,8 @@ impl Database {
                 hash TEXT NOT NULL,
                 line_count INTEGER NOT NULL,
                 last_indexed TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'source'
+                role TEXT NOT NULL DEFAULT 'source',
+                executable INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS symbols (
@@ -765,7 +768,7 @@ impl Database {
     pub fn file_rows(&self) -> Result<Vec<FileRow>, DbError> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, path, role, line_count FROM files")?;
+            .prepare("SELECT id, path, role, line_count, executable FROM files")?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(FileRow {
@@ -773,6 +776,7 @@ impl Database {
                     path: row.get(1)?,
                     role: FileRole::parse(&row.get::<_, String>(2)?),
                     line_count: row.get(3)?,
+                    executable: row.get::<_, i64>(4)? != 0,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -782,6 +786,14 @@ impl Database {
     /// Every symbol in source files (exported or not).
     pub fn all_symbols(&self) -> Result<Vec<Symbol>, DbError> {
         self.symbols_where("1 = 1", [])
+    }
+
+    pub fn set_executable(&self, file_id: i64, executable: bool) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE files SET executable = ?1 WHERE id = ?2",
+            params![executable, file_id],
+        )?;
+        Ok(())
     }
 
     pub fn set_import_target(&self, import_id: i64, target_file_id: i64) -> Result<(), DbError> {

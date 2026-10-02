@@ -345,6 +345,7 @@ mod tests {
                 path: path.into(),
                 role: FileRole::Source,
                 line_count: 1,
+                executable: false,
             },
         )
     }

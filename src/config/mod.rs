@@ -99,7 +99,7 @@ pub struct PatternThresholds {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EntriesConfig {
     /// Extra entry globs (repo-relative). Every export of an entry file counts as used.
-    #[serde(default)]
+    #[serde(default = "default_entry_files")]
     pub files: Vec<String>,
     /// Globs for test files. They are indexed only as reference sources, even when `exclude`
     /// matches them, so an export used only by tests is reported as test-only, not unused.
@@ -116,7 +116,7 @@ pub struct EntriesConfig {
 impl Default for EntriesConfig {
     fn default() -> Self {
         Self {
-            files: Vec::new(),
+            files: default_entry_files(),
             test_files: default_test_files(),
             index_tests: true,
             private_package_exports_are_api: false,
@@ -530,6 +530,13 @@ fn pattern_covers(existing: &str, candidate: &str) -> bool {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_entry_files() -> Vec<String> {
+    ["vercel.ts", "vercel.js", "vercel.mjs"]
+        .into_iter()
+        .map(String::from)
+        .collect()
 }
 
 fn default_test_files() -> Vec<String> {

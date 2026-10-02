@@ -353,6 +353,7 @@ impl Analyzer {
         self.db.transaction(|db| {
             let file_id = db.upsert_file_with_role(&rel_path, hash, line_count, role)?;
             db.clear_file_symbols(file_id)?;
+            db.set_executable(file_id, indexed.parsed.executable)?;
 
             for import in &indexed.parsed.imports {
                 db.insert_import(file_id, import)?;
@@ -399,7 +400,11 @@ impl Analyzer {
             let target = match cache.get(&key) {
                 Some(found) => *found,
                 None => {
-                    let found = self.resolve_specifier(&root, &edge.source_path, &edge.specifier)?;
+                    let found = if edge.kind == crate::analyzer::parser::ImportKind::Path {
+                        self.resolve_path_string(&edge.source_path, &edge.specifier)?
+                    } else {
+                        self.resolve_specifier(&root, &edge.source_path, &edge.specifier)?
+                    };
                     cache.insert(key, found);
                     found
                 }
@@ -447,6 +452,22 @@ impl Analyzer {
         })?;
 
         Ok(())
+    }
+
+    /// A path written in a string: relative to the file, else to the project root.
+    fn resolve_path_string(
+        &self,
+        source_path: &str,
+        value: &str,
+    ) -> Result<Option<i64>, AnalyzerError> {
+        let from_file = crate::entries::join_relative(parent_of(source_path), value);
+        if let Some(id) = self.db.get_file_id(&from_file)? {
+            return Ok(Some(id));
+        }
+        if value.starts_with("../") {
+            return Ok(None);
+        }
+        Ok(self.db.get_file_id(&crate::entries::join_relative("", value))?)
     }
 
     /// Resolve an import specifier from `source_path` to an indexed file id.

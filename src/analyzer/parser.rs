@@ -174,6 +174,8 @@ pub struct ParsedFile {
     pub imports: Vec<ParsedImport>,
     pub local_uses: Vec<LocalUse>,
     pub name_refs: Vec<NameRef>,
+    /// Starts with `#!`: run directly, so it is an entry.
+    pub executable: bool,
 }
 
 /// Imported bindings that root framework member chains.
@@ -443,6 +445,7 @@ pub fn parse_source(source: &str, extension: &str) -> ParsedFile {
         imports,
         local_uses,
         name_refs,
+        executable: program.hashbang.is_some(),
     }
 }
 
@@ -606,8 +609,14 @@ pub fn is_function_name_string(value: &str) -> bool {
 }
 
 /// `./worker.ts` or `../lib/x.mjs` — a relative path to a JS/TS source file.
+/// `./worker.ts`, `../lib/x.mjs`, or `workers/import.worker.ts` — a path to a JS/TS source.
 fn is_source_path_string(value: &str) -> bool {
-    if !(value.starts_with("./") || value.starts_with("../")) || value.contains(char::is_whitespace)
+    if !value.contains('/')
+        || value.contains(char::is_whitespace)
+        || value.contains("://")
+        || value.contains(['*', '$', '{', '?', '#'])
+        || value.starts_with('/')
+        || value.starts_with('@')
     {
         return false;
     }

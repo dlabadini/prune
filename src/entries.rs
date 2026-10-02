@@ -130,6 +130,7 @@ pub fn discover(
     let mut plan = EntryPlan::default();
 
     discover_packages(root, config, graph, &paths, &mut plan);
+    discover_tool_references(root, &paths, &mut plan);
     discover_config_files(config, graph, &mut plan);
     if config.frameworks.next.enabled {
         discover_next(root, config, graph, &paths, &mut plan);
@@ -154,6 +155,16 @@ fn source_files(graph: &ModuleGraph) -> impl Iterator<Item = (i64, &str)> {
 }
 
 fn discover_config_files(config: &Config, graph: &ModuleGraph, plan: &mut EntryPlan) {
+    for file in graph.files.values().filter(|file| file.role == FileRole::Source) {
+        if file.executable {
+            plan.entries.push((file.id, "executable script".into()));
+            plan.root_files.push((file.id, "executable script".into()));
+        }
+        if file.path.ends_with(".d.ts") {
+            plan.entries.push((file.id, "ambient declarations".into()));
+            plan.root_files.push((file.id, "ambient declarations".into()));
+        }
+    }
     for (id, path) in source_files(graph) {
         let name = path.rsplit('/').next().unwrap_or(path);
         let stem = strip_source_ext(name);
@@ -256,6 +267,41 @@ fn discover_packages(
     }
 }
 
+/// Paths named in root-level tool configs (`bunfig.toml` preloads, `vercel.json`, CI yaml).
+fn discover_tool_references(root: &Path, paths: &Paths<'_>, plan: &mut EntryPlan) {
+    let Ok(dir) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in dir.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_config_text = [".toml", ".json", ".yaml", ".yml", ".jsonc"]
+            .iter()
+            .any(|ext| name.ends_with(ext))
+            && name != "package.json"
+            && !name.starts_with("tsconfig")
+            && !name.starts_with("jsconfig")
+            && !name.contains("lock");
+        if !is_config_text || !entry.path().is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        if text.len() > 512 * 1024 {
+            continue;
+        }
+        for token in text.split(|ch: char| {
+            ch.is_whitespace() || matches!(ch, '"' | '\'' | ',' | '[' | ']' | '=' | '`' | '(' | ')')
+        }) {
+            if looks_like_path(token) {
+                if let Some(id) = paths.resolve_module(&join_relative("", token)) {
+                    plan.entries.push((id, format!("referenced by {name}")));
+                }
+            }
+        }
+    }
+}
+
 fn push_package_entry(plan: &mut EntryPlan, id: i64, public_api: bool) {
     plan.entries.push((id, "package entry".into()));
     if public_api {
@@ -336,7 +382,7 @@ fn discover_next(
             }
         };
         let app_dirs = [base("app/"), base("src/app/")];
-        let page_dirs = [base("pages/"), base("src/pages/")];
+        let page_dirs = [base("pages/"), base("src/pages/"), base("public/")];
         for (id, path) in source_files(graph) {
             let in_app = app_dirs.iter().any(|dir| path.starts_with(dir.as_str()));
             if in_app && app_entries.contains(file_stem(path)) {
