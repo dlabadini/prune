@@ -302,3 +302,29 @@ fn agent_queries_answer_who_uses_and_safe_to_delete() {
     let verdict = report.delete_verdict("app/dashboard/page.tsx", "metadata").unwrap();
     assert!(!verdict.safe_to_delete, "framework root");
 }
+
+#[test]
+fn fix_deletes_import_connected_unreachable_files_together() {
+    let (dir, findings) = scan_fixture("reachability");
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    analyzer.scan().unwrap();
+    // The check fails while orphan.ts still imports a deleted leaf.ts.
+    let check = "! test -e orphans/orphan.ts || test -e orphans/leaf.ts";
+    let options = prune::fix::FixOptions {
+        apply: true,
+        check: Some(check.into()),
+        kinds: vec![prune::fix::FixKind::DeleteFile],
+        path_prefix: None,
+    };
+    let report = prune::fix::run(dir.path(), analyzer.database(), &findings, &options).unwrap();
+    assert!(report.reverted.is_empty(), "{:?}", report.reverted);
+    assert!(!dir.path().join("orphans/leaf.ts").exists());
+    assert!(!dir.path().join("orphans/orphan.ts").exists());
+
+    // Applying without a check is refused.
+    let options = prune::fix::FixOptions {
+        check: None,
+        ..options
+    };
+    assert!(prune::fix::run(dir.path(), analyzer.database(), &findings, &options).is_err());
+}

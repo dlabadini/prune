@@ -153,15 +153,28 @@ pub fn detect_sprawl_clusters(
     config: &DetectionConfig,
 ) -> Vec<SprawlCluster> {
     let mut clusters = Vec::new();
-    clusters.extend(find_duplicate_clusters(types, config));
-    if types.len() > 80 {
-        clusters.extend(find_partial_overlap_banded(types, config));
-    } else {
-        clusters.extend(find_partial_overlap_clusters(types, config));
+    // Each finder's clusters keep the finder's priority; within a finder, order is made
+    // deterministic (finders iterate hash maps) so dedupe keeps the same clusters every run.
+    let finders: [Vec<SprawlCluster>; 5] = [
+        find_duplicate_clusters(types, config),
+        if types.len() > 80 {
+            find_partial_overlap_banded(types, config)
+        } else {
+            find_partial_overlap_clusters(types, config)
+        },
+        find_nested_slot_clusters(types, config),
+        find_composable_bundle_clusters(types, config),
+        find_hierarchical_bundle_clusters(types, config),
+    ];
+    for mut found in finders {
+        for cluster in &mut found {
+            cluster
+                .members
+                .sort_by_key(|member| (member.symbol.file_id, member.symbol.id));
+        }
+        found.sort_by_cached_key(cluster_order_key);
+        clusters.extend(found);
     }
-    clusters.extend(find_nested_slot_clusters(types, config));
-    clusters.extend(find_composable_bundle_clusters(types, config));
-    clusters.extend(find_hierarchical_bundle_clusters(types, config));
     enrich_with_child_bundles(&mut clusters);
     dedupe_clusters(clusters)
 }
@@ -631,6 +644,20 @@ fn is_noise_shape(parsed: &ParsedTypeDef) -> bool {
         return true;
     }
     false
+}
+
+/// Larger clusters first, then by members and shared fields, so ties break the same way.
+fn cluster_order_key(cluster: &SprawlCluster) -> (std::cmp::Reverse<usize>, Vec<(String, String)>, String) {
+    let members = cluster
+        .members
+        .iter()
+        .map(|member| (member.symbol.name.clone(), member.symbol.source_text.clone()))
+        .collect();
+    (
+        std::cmp::Reverse(cluster.members.len()),
+        members,
+        bundle_signature(&cluster.shared_fields),
+    )
 }
 
 fn dedupe_clusters(clusters: Vec<SprawlCluster>) -> Vec<SprawlCluster> {

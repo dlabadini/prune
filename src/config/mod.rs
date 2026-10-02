@@ -759,6 +759,31 @@ mod tests {
     }
 
     #[test]
+    fn default_config_round_trips_through_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".prunerc");
+        let mut config = Config::default();
+        config.boundaries.push(Boundary {
+            name: "inbox".into(),
+            paths: vec!["packages/inbox/**".into()],
+            fenced: true,
+        });
+        config
+            .lexicon
+            .glossary
+            .insert("draft".into(), "a held reply".into());
+        config.save(&path).unwrap();
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(loaded.boundaries, config.boundaries);
+        assert_eq!(loaded.lexicon.glossary, config.lexicon.glossary);
+        assert_eq!(
+            loaded.frameworks.convex.function_builders,
+            config.frameworks.convex.function_builders
+        );
+        assert_eq!(loaded.entries.test_files, config.entries.test_files);
+    }
+
+    #[test]
     fn fenced_boundaries_split_duplicate_groups() {
         let config: Config = toml::from_str(
             r#"

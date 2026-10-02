@@ -173,17 +173,6 @@ Test files are read as reference sources even when `exclude` matches them; they 
 and prints precision and recall per pattern; it fails below 90%. On the fixtures every metric is
 at 100%.
 
-On a production Next.js + Convex monorepo (3.5k files), dead exports in six audited areas
-(Convex comms and agents, the inbox and agents packages, comms components and hooks), labeled
-independently by text search:
-
-| | Flagged | Not actually dead | Precision |
-|---|---:|---:|---:|
-| Reference counting, 5 per file | 114 | 62 | 46% |
-| Reachability classes | 242 | 1–2 | 99% |
-
-The reachability scan also kept 51 of the 52 true positives of the old scan; the 52nd is a Convex function an operator runs with `convex run`, now correctly used.
-
 ## Configuration
 
 Create `.prunerc` in your project root, or run `prune init`. Generated data stays in `.prune/` and should not be committed.

@@ -483,11 +483,34 @@ impl Analyzer {
         specifier: &str,
     ) -> Result<Option<i64>, AnalyzerError> {
         let absolute = self.root.join(source_path);
-        let full = match self.resolver.resolve_file(&absolute, specifier) {
+        // tsconfig `include`/`exclude` decide whether `paths` aliases apply to a file; test files
+        // are often excluded. Retry from a neutral sibling so an alias resolves the same way for
+        // every file in a directory (results are cached per directory).
+        let resolved = self
+            .resolver
+            .resolve_file(&absolute, specifier)
+            .or_else(|error| {
+                self.resolver
+                    .resolve_file(absolute.with_file_name("index.ts"), specifier)
+                    .map_err(|_| error)
+            })
+            .or_else(|error| {
+                // Excluded directories (`__tests__`): aliases are project-relative.
+                if specifier.starts_with('.') {
+                    return Err(error);
+                }
+                self.resolver
+                    .resolve_file(self.root.join("index.ts"), specifier)
+                    .map_err(|_| error)
+            });
+        let full = match resolved {
             Ok(resolved) => resolved.full_path(),
-            Err(_) => match resolve_relative_import(&absolute, specifier) {
+            Err(error) => match resolve_relative_import(&absolute, specifier) {
                 Some(path) => path,
-                None => return Ok(None),
+                None => {
+                    tracing::debug!("unresolved {specifier} from {source_path}: {error}");
+                    return Ok(None);
+                }
             },
         };
         let full = std::fs::canonicalize(&full).unwrap_or(full);

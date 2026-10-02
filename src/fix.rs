@@ -60,6 +60,9 @@ pub struct PlannedFix {
     /// Why a candidate was not planned.
     pub skipped: Vec<(String, String)>,
     pub new_contents: Option<String>,
+    /// For a deletion: every file deleted together (unreachable files that import each other
+    /// go as one unit, so the check never sees half a group).
+    pub group: Vec<String>,
 }
 
 #[derive(Debug, Default)]
@@ -81,7 +84,9 @@ impl FixReport {
                         fix.symbols.join(", ")
                     ));
                 }
-                FixKind::DeleteFile => out.push_str(&format!("delete    {}\n", fix.file)),
+                FixKind::DeleteFile => {
+                    out.push_str(&format!("delete    {}\n", fix.group.join(" + ")));
+                }
                 _ => {}
             }
             for (name, reason) in &fix.skipped {
@@ -152,46 +157,99 @@ pub fn run(
             symbols: done,
             skipped,
             new_contents: Some(new_contents),
+            group: Vec::new(),
         });
     }
     deletes.sort();
     deletes.dedup();
-    for file in deletes {
+    for group in delete_groups(&graph, &deletes) {
         report.planned.push(PlannedFix {
             kind: FixKind::DeleteFile,
-            file,
+            file: group[0].clone(),
             symbols: Vec::new(),
             skipped: Vec::new(),
             new_contents: None,
+            group,
         });
     }
 
     if options.apply {
+        let Some(command) = options.check.as_deref() else {
+            return Err(io::Error::other(
+                "--apply needs a check command (--check \"<cmd>\" or [fix] check in .prunerc); \
+                 pass --check true to apply without verification",
+            ));
+        };
         for fix in &report.planned {
             if fix.kind == FixKind::Unexport && fix.symbols.is_empty() {
                 continue;
             }
-            let path = root.join(&fix.file);
-            let original = std::fs::read(&path)?;
-            match &fix.new_contents {
-                Some(contents) => std::fs::write(&path, contents)?,
-                None => std::fs::remove_file(&path)?,
-            }
-            match &options.check {
-                Some(command) => {
-                    let outcome = run_check(root, command)?;
-                    if outcome.passed {
-                        report.applied.push(fix.file.clone());
-                    } else {
-                        std::fs::write(&path, &original)?;
-                        report.reverted.push((fix.file.clone(), format!("`{command}` failed")));
-                    }
+            let files: Vec<String> = if fix.group.is_empty() {
+                vec![fix.file.clone()]
+            } else {
+                fix.group.clone()
+            };
+            let mut originals = Vec::new();
+            for file in &files {
+                let path = root.join(file);
+                originals.push((path.clone(), std::fs::read(&path)?));
+                match &fix.new_contents {
+                    Some(contents) => std::fs::write(&path, contents)?,
+                    None => std::fs::remove_file(&path)?,
                 }
-                None => report.applied.push(fix.file.clone()),
+            }
+            let outcome = run_check(root, command)?;
+            if outcome.passed {
+                report.applied.extend(files);
+            } else {
+                for (path, original) in &originals {
+                    std::fs::write(path, original)?;
+                }
+                report
+                    .reverted
+                    .push((files.join(", "), format!("`{command}` failed")));
             }
         }
     }
     Ok(report)
+}
+
+/// Unreachable files that import each other, grouped (connected through imports).
+fn delete_groups(graph: &ModuleGraph, files: &[String]) -> Vec<Vec<String>> {
+    let index: std::collections::HashMap<&str, usize> =
+        files.iter().enumerate().map(|(i, f)| (f.as_str(), i)).collect();
+    let mut parent: Vec<usize> = (0..files.len()).collect();
+    fn find(parent: &mut [usize], i: usize) -> usize {
+        let mut root = i;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        parent[i] = root;
+        root
+    }
+    for edge in &graph.edges {
+        let Some(target) = edge.target_file_id else {
+            continue;
+        };
+        let (Some(&a), Some(&b)) = (
+            index.get(edge.source_path.as_str()),
+            index.get(graph.path(target)),
+        ) else {
+            continue;
+        };
+        let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+        if ra != rb {
+            parent[ra] = rb;
+        }
+    }
+    let mut groups: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+    for (i, file) in files.iter().enumerate() {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(file.clone());
+    }
+    let mut out: Vec<Vec<String>> = groups.into_values().collect();
+    out.sort();
+    out
 }
 
 /// Names of `file` that a barrel re-exports by name (un-exporting them would break it).
@@ -359,6 +417,12 @@ pub fn apply_rename(root: &Path, plan: &RenamePlan, check: Option<&str>) -> io::
     if plan.refused.is_some() {
         return Ok("Nothing applied.".into());
     }
+    let Some(check) = check else {
+        return Err(io::Error::other(
+            "--apply needs a check command (--check \"<cmd>\" or [fix] check in .prunerc)",
+        ));
+    };
+    let check = Some(check);
     let mut originals: Vec<(PathBuf, String)> = Vec::new();
     for (file, edits) in &plan.edits {
         let path = root.join(file);
@@ -382,7 +446,7 @@ pub fn apply_rename(root: &Path, plan: &RenamePlan, check: Option<&str>) -> io::
         }
         return Ok(format!("Renamed in {} file(s); `{command}` passed.", originals.len()));
     }
-    Ok(format!("Renamed in {} file(s) (no check command configured).", originals.len()))
+    Ok(format!("Renamed in {} file(s).", originals.len()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

@@ -45,6 +45,8 @@ impl PatternDetector for LexiconDetector {
                         .partial_cmp(&left.confidence)
                         .unwrap_or(std::cmp::Ordering::Equal)
                 })
+                // Deterministic tie-break so the cap keeps the same findings every run.
+                .then_with(|| left.identity_keys().cmp(&right.identity_keys()))
         });
         findings.truncate(max_findings);
         findings

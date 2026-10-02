@@ -392,9 +392,13 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
         }
     }
 
-    let mut seen: HashMap<String, usize> = HashMap::new();
     for finding in &mut all_findings {
         finding.stabilize_id();
+    }
+    // Same identity twice (rare): suffix in a deterministic order.
+    all_findings.sort_by(|a, b| (&a.id, &a.title).cmp(&(&b.id, &b.title)));
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    for finding in &mut all_findings {
         let count = seen.entry(finding.id.clone()).or_insert(0);
         *count += 1;
         if *count > 1 {
@@ -404,11 +408,14 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
 
     // Sort by severity (highest first), then by confidence
     all_findings.sort_by(|a, b| {
-        b.severity.cmp(&a.severity).then_with(|| {
-            b.confidence
-                .partial_cmp(&a.confidence)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        b.severity
+            .cmp(&a.severity)
+            .then_with(|| {
+                b.confidence
+                    .partial_cmp(&a.confidence)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .then_with(|| a.id.cmp(&b.id))
     });
 
     all_findings
