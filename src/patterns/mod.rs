@@ -88,6 +88,19 @@ impl Location {
     }
 }
 
+/// One symbol a finding is about, with how it is used.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FindingSymbol {
+    pub name: String,
+    pub kind: String,
+    pub file: String,
+    pub line: usize,
+    /// `used`, `test_only`, `same_file_only`, `unused`, `unreachable`
+    pub usage: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
 /// Scoring pool. Emerging findings can raise the repo score and cannot lower it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -228,6 +241,9 @@ pub struct Finding {
     /// Structured compose/rename plan for agents
     #[serde(default)]
     pub prune_action: Option<crate::compose::PruneAction>,
+    /// Symbols this finding is about, each classified by usage
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub symbols: Vec<FindingSymbol>,
 }
 
 impl Finding {
@@ -258,7 +274,13 @@ impl Finding {
             related_concepts: Vec::new(),
             action_summary: String::new(),
             prune_action: None,
+            symbols: Vec::new(),
         }
+    }
+
+    pub fn with_symbols(mut self, symbols: Vec<FindingSymbol>) -> Self {
+        self.symbols = symbols;
+        self
     }
 
     pub fn with_rationale(mut self, rationale: String) -> Self {
@@ -300,9 +322,37 @@ impl Finding {
         &self.id
     }
 
-    /// Replace the per-scan uuid with an id derived from the pattern, title, and locations.
+    /// Replace the per-scan uuid with an id derived from the pattern and what it is about:
+    /// the involved symbols, else the concepts and files. Titles, counts, and line numbers
+    /// are left out so the id survives unrelated edits.
     pub fn stabilize_id(&mut self) {
-        self.id = crate::score::stable_finding_id(self.pattern_type, &self.title, &self.locations);
+        self.id = crate::score::stable_finding_id(self.pattern_type, &self.identity_keys());
+    }
+
+    /// The facts that make this finding the same finding across scans.
+    pub fn identity_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = if self.symbols.is_empty() {
+            let mut keys: Vec<String> = self
+                .related_concepts
+                .iter()
+                .filter(|concept| !concept.starts_with("git:"))
+                .map(|concept| format!("concept:{concept}"))
+                .collect();
+            keys.extend(
+                self.locations
+                    .iter()
+                    .map(|location| format!("file:{}", location.file)),
+            );
+            keys
+        } else {
+            self.symbols
+                .iter()
+                .map(|symbol| format!("symbol:{}::{}", symbol.file, symbol.name))
+                .collect()
+        };
+        keys.sort();
+        keys.dedup();
+        keys
     }
 }
 
@@ -342,8 +392,14 @@ pub fn run_all_detectors(db: &Database, config: &Config) -> Vec<Finding> {
         }
     }
 
+    let mut seen: HashMap<String, usize> = HashMap::new();
     for finding in &mut all_findings {
         finding.stabilize_id();
+        let count = seen.entry(finding.id.clone()).or_insert(0);
+        *count += 1;
+        if *count > 1 {
+            finding.id = format!("{}-{}", finding.id, count);
+        }
     }
 
     // Sort by severity (highest first), then by confidence

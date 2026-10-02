@@ -86,7 +86,7 @@ impl SymbolKind {
 }
 
 /// Bump when the parser or schema changes what is stored; the index is rebuilt.
-pub const INDEX_VERSION: i64 = 2;
+pub const INDEX_VERSION: i64 = 3;
 
 /// Whether a file is product code or only read for references (tests).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -153,6 +153,8 @@ pub struct RefRow {
     pub symbol_id: i64,
     pub file_id: i64,
     pub line: usize,
+    /// Resolved across modules (import, framework reference) rather than a same-scope use.
+    pub derived: bool,
 }
 
 /// File row with its role.
@@ -743,13 +745,16 @@ impl Database {
 
     /// Every resolved use of a symbol.
     pub fn all_refs(&self) -> Result<Vec<RefRow>, DbError> {
-        let mut stmt = self.conn.prepare("SELECT symbol_id, file_id, line FROM refs")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT symbol_id, file_id, line, derived FROM refs")?;
         let rows = stmt
             .query_map([], |row| {
                 Ok(RefRow {
                     symbol_id: row.get(0)?,
                     file_id: row.get(1)?,
                     line: row.get(2)?,
+                    derived: row.get::<_, i64>(3)? != 0,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;

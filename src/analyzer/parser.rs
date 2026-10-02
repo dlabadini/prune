@@ -409,6 +409,11 @@ pub fn parse_source(source: &str, extension: &str) -> ParsedFile {
     }
 
     collect_expression_refs(source, nodes, &mut imports, &mut name_refs);
+    for comment in &program.comments {
+        let span = comment.span;
+        let text = source.get(span.start as usize..span.end as usize).unwrap_or("");
+        push_cli_refs(text, line_at(source, span.start), &mut name_refs);
+    }
 
     let mut local_uses = Vec::new();
     for symbol_id in scoping.symbol_ids() {
@@ -510,6 +515,11 @@ fn collect_expression_refs(
                 push_string_ref(value, line_at(source, lit.span.start), imports, name_refs);
             }
             AstKind::TemplateLiteral(template) => {
+                for quasi in &template.quasis {
+                    if let Some(cooked) = &quasi.value.cooked {
+                        push_cli_refs(cooked.as_str(), line_at(source, quasi.span.start), name_refs);
+                    }
+                }
                 if template.expressions.is_empty() && template.quasis.len() == 1 {
                     if let Some(cooked) = &template.quasis[0].value.cooked {
                         push_string_ref(
@@ -532,6 +542,7 @@ fn push_string_ref(
     imports: &mut Vec<ParsedImport>,
     name_refs: &mut Vec<NameRef>,
 ) {
+    push_cli_refs(value, line, name_refs);
     if is_function_name_string(value) {
         name_refs.push(NameRef {
             kind: NameRefKind::FunctionString,
@@ -542,6 +553,37 @@ fn push_string_ref(
     } else if is_source_path_string(value) {
         imports.push(ParsedImport::new(value.to_string(), ImportKind::Path, line));
     }
+}
+
+/// Functions named in a `convex run <module:fn>` command inside a string or comment: an
+/// operator runs them by hand, which is a use.
+fn push_cli_refs(text: &str, line: usize, name_refs: &mut Vec<NameRef>) {
+    for name in cli_function_refs(text) {
+        name_refs.push(NameRef {
+            kind: NameRefKind::FunctionString,
+            value: name,
+            specifier: None,
+            line,
+        });
+    }
+}
+
+pub fn cli_function_refs(text: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(index) = rest.find("convex run") {
+        rest = &rest[index + "convex run".len()..];
+        let token = rest
+            .split(|ch: char| ch.is_whitespace() || matches!(ch, '`' | '\'' | '"'))
+            .filter(|token| !token.is_empty())
+            .find(|token| !token.starts_with('-'));
+        if let Some(token) = token {
+            if is_function_name_string(token) {
+                found.push(token.to_string());
+            }
+        }
+    }
+    found
 }
 
 /// `comms/threads/internal:claimAuthenticated` — a module path, a colon, and an identifier.
@@ -1156,6 +1198,18 @@ export const run = query({ handler: async (ctx) => {
         let parsed = parse_source(source, "ts");
         assert!(parsed.local_uses.is_empty(), "{:?}", parsed.local_uses);
         assert!(parsed.symbols[0].is_exported);
+    }
+
+    #[test]
+    fn cli_commands_in_strings_and_comments() {
+        let source = r#"
+// Operational: `bunx convex run comms/senders/provisioning:createPlatformInbox`.
+const fix = `bunx convex run comms/doctor:repair '{"pool":"${pool}"}' --prod`;
+"#;
+        let parsed = parse_source(source, "ts");
+        let values: Vec<_> = parsed.name_refs.iter().map(|r| r.value.as_str()).collect();
+        assert!(values.contains(&"comms/senders/provisioning:createPlatformInbox"), "{values:?}");
+        assert!(values.contains(&"comms/doctor:repair"), "{values:?}");
     }
 
     #[test]

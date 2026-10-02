@@ -5,7 +5,7 @@
 
 use crate::config::Config;
 use crate::db::{Database, SymbolKind};
-use crate::patterns::{Finding, Location, PatternType, Severity, Tier};
+use crate::patterns::{Finding, PatternType, Severity, Tier};
 use serde::Serialize;
 
 const ESSENTIAL_POOL: f32 = 80.0;
@@ -66,13 +66,10 @@ impl RepoScore {
 }
 
 /// Id that stays the same for the same pattern, title, and locations.
-pub fn stable_finding_id(pattern: PatternType, title: &str, locations: &[Location]) -> String {
-    let mut places: Vec<String> = locations
-        .iter()
-        .map(|location| format!("{}:{}", location.file, location.start_line))
-        .collect();
-    places.sort();
-    let key = format!("{}\n{}\n{}", pattern.as_str(), title, places.join("\n"));
+pub fn stable_finding_id(pattern: PatternType, keys: &[String]) -> String {
+    let mut keys = keys.to_vec();
+    keys.sort();
+    let key = format!("{}\n{}", pattern.as_str(), keys.join("\n"));
     format!("{}-{:016x}", pattern.as_str(), fnv64(&key))
 }
 
@@ -279,25 +276,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stable_id_ignores_location_order() {
+    fn stable_id_ignores_key_order() {
         let first = stable_finding_id(
             PatternType::DeadExports,
-            "unused",
-            &[
-                Location::new("b.ts".into(), 4, 8),
-                Location::new("a.ts".into(), 1, 2),
-            ],
+            &["symbol:b.ts::y".into(), "symbol:a.ts::x".into()],
         );
         let second = stable_finding_id(
             PatternType::DeadExports,
-            "unused",
-            &[
-                Location::new("a.ts".into(), 1, 2),
-                Location::new("b.ts".into(), 4, 8),
-            ],
+            &["symbol:a.ts::x".into(), "symbol:b.ts::y".into()],
         );
         assert_eq!(first, second);
         assert!(first.starts_with("dead_exports-"));
+    }
+
+    #[test]
+    fn finding_id_ignores_title_and_lines() {
+        use crate::patterns::{Finding, Location, Severity};
+        let mut first = Finding::new(PatternType::GodFile, Severity::High, 0.9, "40 exports".into(), "d".into())
+            .with_locations(vec![Location::new("a.ts".into(), 1, 400)]);
+        let mut second = Finding::new(PatternType::GodFile, Severity::High, 0.9, "41 exports".into(), "d".into())
+            .with_locations(vec![Location::new("a.ts".into(), 1, 420)]);
+        first.stabilize_id();
+        second.stabilize_id();
+        assert_eq!(first.id, second.id);
     }
 
     #[test]

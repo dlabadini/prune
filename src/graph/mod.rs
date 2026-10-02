@@ -2,6 +2,8 @@
 //!
 //! Loaded from the index once per detector run. Every query here is pure over that snapshot.
 
+pub mod usage;
+
 use crate::analyzer::parser::ImportKind;
 use crate::db::{Database, DbError, FileRole, FileRow, ImportEdge, Symbol, SymbolKind};
 use std::cell::RefCell;
