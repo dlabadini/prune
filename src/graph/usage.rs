@@ -56,6 +56,41 @@ pub enum Reach {
     Unreachable,
 }
 
+/// Everything an agent needs to know about one export before editing it.
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolUsage {
+    pub file: String,
+    pub name: String,
+    pub kind: String,
+    pub line: usize,
+    pub usage: Usage,
+    /// Why a framework/tool consumes it, when it is a root.
+    pub root: Option<String>,
+    pub convex_function: bool,
+    pub file_reach: Reach,
+    /// Files that use it (imports resolved through barrels, framework references).
+    pub users: Vec<SymbolUser>,
+    /// Barrels that re-export it by name.
+    pub reexported_by: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolUser {
+    pub file: String,
+    pub line: usize,
+    pub test: bool,
+    pub reach: Reach,
+}
+
+/// Can this export be deleted without breaking a reachable user?
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteVerdict {
+    pub safe_to_delete: bool,
+    pub safe_to_unexport: bool,
+    pub reasons: Vec<String>,
+    pub usage: SymbolUsage,
+}
+
 pub struct UsageReport {
     pub graph: ModuleGraph,
     product: HashSet<i64>,
@@ -186,6 +221,107 @@ impl UsageReport {
         self.tags
             .get(&symbol_id)
             .is_some_and(|tags| tags.iter().any(|tag| tag == CONVEX_FUNCTION_TAG))
+    }
+
+    /// Usage facts for the export `name` of `file`.
+    pub fn symbol_usage(&self, file: &str, name: &str) -> Option<SymbolUsage> {
+        let file_id = self.graph.file_id(file)?;
+        let symbol_id = self
+            .graph
+            .exported(file_id)
+            .iter()
+            .copied()
+            .find(|id| {
+                let symbol = &self.graph.symbols[id];
+                symbol.name == name || (name == "default" && symbol.is_default)
+            })?;
+        let symbol = &self.graph.symbols[&symbol_id];
+        let mut users: Vec<SymbolUser> = self
+            .external_users(symbol_id)
+            .into_iter()
+            .map(|row| SymbolUser {
+                file: self.graph.path(row.file_id).to_string(),
+                line: row.line,
+                test: self.graph.role(row.file_id) == FileRole::Test,
+                reach: self.reach_of_user(row.file_id),
+            })
+            .collect();
+        users.sort_by(|a, b| (a.file.as_str(), a.line).cmp(&(b.file.as_str(), b.line)));
+        users.dedup_by(|a, b| a.file == b.file && a.line == b.line);
+        let mut reexported_by: Vec<String> = self
+            .graph
+            .edges
+            .iter()
+            .filter(|edge| {
+                edge.kind == crate::analyzer::parser::ImportKind::Reexport
+                    && edge.target_file_id == Some(file_id)
+                    && (edge.star || edge.bindings.iter().any(|binding| binding.imported == name))
+            })
+            .map(|edge| edge.source_path.clone())
+            .collect();
+        reexported_by.sort();
+        reexported_by.dedup();
+        Some(SymbolUsage {
+            file: file.to_string(),
+            name: symbol.name.clone(),
+            kind: symbol.kind.as_str().to_string(),
+            line: symbol.start_line,
+            usage: self.usage(symbol_id).unwrap_or(Usage::Unused),
+            root: self.roots.get(&symbol_id).cloned(),
+            convex_function: self.is_convex_function(symbol_id),
+            file_reach: self.reach(file_id),
+            users,
+            reexported_by,
+        })
+    }
+
+    /// Whether deleting (or un-exporting) an export is safe, with reasons.
+    pub fn delete_verdict(&self, file: &str, name: &str) -> Option<DeleteVerdict> {
+        let usage = self.symbol_usage(file, name)?;
+        let mut reasons = Vec::new();
+        if let Some(root) = &usage.root {
+            reasons.push(format!("consumed outside the import graph ({root})"));
+        }
+        let product_users: Vec<&SymbolUser> = usage
+            .users
+            .iter()
+            .filter(|user| !user.test && user.reach == Reach::Product)
+            .collect();
+        if !product_users.is_empty() {
+            reasons.push(format!(
+                "used by {} reachable file(s), e.g. {}",
+                product_users.len(),
+                product_users[0].file
+            ));
+        }
+        let test_users = usage.users.iter().filter(|user| user.test).count();
+        if test_users > 0 {
+            reasons.push(format!("used by {test_users} test file(s); delete or update those tests too"));
+        }
+        if usage.usage == Usage::SameFileOnly {
+            reasons.push("used inside its own file: drop `export` instead of deleting".into());
+        }
+        if usage.convex_function && usage.usage == Usage::Unused {
+            reasons.push("Convex function: external clients or the dashboard may still call it".into());
+        }
+        let safe_to_delete = matches!(usage.usage, Usage::Unused | Usage::Unreachable | Usage::TestOnly)
+            && usage.root.is_none()
+            && product_users.is_empty();
+        let safe_to_unexport = usage.root.is_none()
+            && usage.users.is_empty()
+            && usage.reexported_by.is_empty();
+        if !usage.reexported_by.is_empty() {
+            reasons.push(format!(
+                "re-exported by {}; remove it there too",
+                usage.reexported_by.join(", ")
+            ));
+        }
+        Some(DeleteVerdict {
+            safe_to_delete,
+            safe_to_unexport,
+            reasons,
+            usage,
+        })
     }
 
     /// Uses of a symbol from other files.

@@ -276,3 +276,29 @@ fn changed_scope_includes_dependents() {
         assert!(changed.contains("app/new.ts"), "{changed:?}");
     }
 }
+
+#[test]
+fn agent_queries_answer_who_uses_and_safe_to_delete() {
+    let (dir, _) = scan_fixture("reachability");
+    let mut analyzer = Analyzer::new(dir.path()).unwrap();
+    analyzer.scan().unwrap();
+    let report = prune::graph::usage::UsageReport::load(analyzer.database()).unwrap();
+
+    let used = report.symbol_usage("packages/lib/src/a.ts", "usedA").unwrap();
+    assert!(used.users.iter().any(|user| user.file == "app/dashboard/page.tsx"));
+    assert!(used.reexported_by.contains(&"packages/lib/src/index.ts".to_string()));
+    let verdict = report.delete_verdict("packages/lib/src/a.ts", "usedA").unwrap();
+    assert!(!verdict.safe_to_delete);
+
+    let verdict = report.delete_verdict("packages/lib/src/a.ts", "unusedA").unwrap();
+    assert!(verdict.safe_to_delete, "{:?}", verdict.reasons);
+
+    let verdict = report.delete_verdict("packages/lib/src/a.ts", "testOnlyA").unwrap();
+    assert!(verdict.safe_to_delete);
+    assert!(verdict.reasons.iter().any(|reason| reason.contains("test file")));
+
+    let verdict = report.delete_verdict("convex/messages.ts", "deliver").unwrap();
+    assert!(!verdict.safe_to_delete);
+    let verdict = report.delete_verdict("app/dashboard/page.tsx", "metadata").unwrap();
+    assert!(!verdict.safe_to_delete, "framework root");
+}

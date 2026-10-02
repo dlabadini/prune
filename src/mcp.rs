@@ -61,6 +61,30 @@ struct RecentArgs {
     commits: Option<usize>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct SymbolArgs {
+    /// File that declares the export, relative to the project root.
+    file: String,
+    /// Exported name (`default` for a default export).
+    symbol: String,
+    /// Project directory. Defaults to the directory the server was started in.
+    #[serde(default)]
+    path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RenameArgs {
+    /// File that declares the export, relative to the project root.
+    file: String,
+    /// Current exported name.
+    symbol: String,
+    /// New name.
+    to: String,
+    /// Project directory. Defaults to the directory the server was started in.
+    #[serde(default)]
+    path: Option<String>,
+}
+
 #[tool_router(server_handler)]
 impl PruneServer {
     pub fn new(root: PathBuf) -> Self {
@@ -167,6 +191,76 @@ impl PruneServer {
         ]))
     }
 
+    #[tool(
+        description = "Before editing: who uses export X of a file? Returns its usage class (used, test_only, same_file_only, unused, unreachable), every importing/referencing file (through barrels, namespaces, Convex api/internal chains), and barrels that re-export it"
+    )]
+    fn who_uses(
+        &self,
+        Parameters(args): Parameters<SymbolArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let report = self.usage_report(args.path.as_deref())?;
+        let usage = report
+            .symbol_usage(&args.file, &args.symbol)
+            .ok_or_else(|| tool_error(format!("{} does not export {}", args.file, args.symbol)))?;
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(json!(usage)).map_err(tool_error)?,
+        ]))
+    }
+
+    #[tool(
+        description = "Before deleting: is it safe to delete (or un-export) export X of a file? Returns safe_to_delete, safe_to_unexport, and the reasons (reachable users, tests, framework roots, re-exports)"
+    )]
+    fn safe_to_delete(
+        &self,
+        Parameters(args): Parameters<SymbolArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let report = self.usage_report(args.path.as_deref())?;
+        let verdict = report
+            .delete_verdict(&args.file, &args.symbol)
+            .ok_or_else(|| tool_error(format!("{} does not export {}", args.file, args.symbol)))?;
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(json!(verdict)).map_err(tool_error)?,
+        ]))
+    }
+
+    #[tool(
+        description = "Before renaming: which files and how many edits does renaming export X touch (declaration, barrels, importers, namespace members)? Does not write anything; `prune rename --apply` performs it"
+    )]
+    fn rename_impact(
+        &self,
+        Parameters(args): Parameters<RenameArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let root = self.resolve(args.path.as_deref());
+        let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
+        analyzer.scan().map_err(tool_error)?;
+        let plan = crate::fix::plan_rename(analyzer.database(), &root, &args.file, &args.symbol, &args.to)
+            .map_err(tool_error)?;
+        let files: Vec<_> = plan
+            .edits
+            .iter()
+            .map(|(file, edits)| json!({ "file": file, "edits": edits.len() }))
+            .collect();
+        let payload = json!({
+            "from": plan.from,
+            "to": plan.to,
+            "refused": plan.refused,
+            "files": files,
+        });
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(payload).map_err(tool_error)?,
+        ]))
+    }
+
+    fn usage_report(
+        &self,
+        path: Option<&str>,
+    ) -> Result<crate::graph::usage::UsageReport, rmcp::ErrorData> {
+        let root = self.resolve(path);
+        let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
+        analyzer.scan().map_err(tool_error)?;
+        crate::graph::usage::UsageReport::load(analyzer.database()).map_err(tool_error)
+    }
+
     fn resolve(&self, path: Option<&str>) -> PathBuf {
         path.map(PathBuf::from).unwrap_or_else(|| self.root.clone())
     }
@@ -188,4 +282,37 @@ pub async fn serve(root: &Path) -> anyhow::Result<()> {
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn who_uses_tool_reports_importers() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("package.json"), r#"{"name":"t","main":"main.ts"}"#).unwrap();
+        std::fs::write(
+            dir.path().join(".prunerc"),
+            "[thresholds]\nembeddings_enabled = false\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("lib.ts"), "export function helper() { return 1; }\n").unwrap();
+        std::fs::write(
+            dir.path().join("main.ts"),
+            "import { helper } from \"./lib\";\nconsole.log(helper());\n",
+        )
+        .unwrap();
+        let server = PruneServer::new(dir.path().to_path_buf());
+        let result = server
+            .who_uses(Parameters(SymbolArgs {
+                file: "lib.ts".into(),
+                symbol: "helper".into(),
+                path: None,
+            }))
+            .unwrap();
+        let text = serde_json::to_string(&result).unwrap();
+        assert!(text.contains("main.ts"), "{text}");
+        assert!(text.contains("\\\"used\\\"") || text.contains("used"), "{text}");
+    }
 }
