@@ -329,11 +329,8 @@ pub fn format_action_markdown(action: &PruneAction) -> String {
                 format!(" (+ {})", member.unique_fields.join(", "))
             };
             md.push_str(&format!(
-                "- `{}` at {}:{}{}\n",
-                member.type_name,
-                member.file,
-                member.line,
-                format!("{}{}", extends, extras)
+                "- `{}` at {}:{}{}{}\n",
+                member.type_name, member.file, member.line, extends, extras
             ));
         }
     }

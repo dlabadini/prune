@@ -126,22 +126,19 @@ impl LicenseManager {
 
     /// Load license from disk
     pub fn load(&mut self) -> Result<&License, LicenseError> {
-        if self.cached_license.is_some() {
-            return Ok(self.cached_license.as_ref().unwrap());
+        if self.cached_license.is_none() {
+            if !self.license_path.exists() {
+                return Err(LicenseError::NotFound);
+            }
+
+            let content = std::fs::read_to_string(&self.license_path)
+                .map_err(|e| LicenseError::ReadError(e.to_string()))?;
+
+            let license: License = serde_json::from_str(&content)
+                .map_err(|e| LicenseError::ReadError(e.to_string()))?;
+            self.cached_license = Some(license);
         }
-
-        if !self.license_path.exists() {
-            return Err(LicenseError::NotFound);
-        }
-
-        let content = std::fs::read_to_string(&self.license_path)
-            .map_err(|e| LicenseError::ReadError(e.to_string()))?;
-
-        let license: License =
-            serde_json::from_str(&content).map_err(|e| LicenseError::ReadError(e.to_string()))?;
-
-        self.cached_license = Some(license);
-        Ok(self.cached_license.as_ref().unwrap())
+        self.cached_license.as_ref().ok_or(LicenseError::NotFound)
     }
 
     /// Save license to disk

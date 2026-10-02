@@ -1181,7 +1181,14 @@ pub struct DbStats {
 fn ensure_sqlite_vec() {
     static INIT: Once = Once::new();
     INIT.call_once(|| unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+        type EntryPoint = unsafe extern "C" fn(
+            *mut rusqlite::ffi::sqlite3,
+            *mut *mut std::os::raw::c_char,
+            *const rusqlite::ffi::sqlite3_api_routines,
+        ) -> std::os::raw::c_int;
+        // sqlite-vec exports its init with an opaque signature; SQLite calls it as an extension
+        // entry point, which is the ABI it was compiled for.
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute::<*const (), EntryPoint>(
             sqlite_vec::sqlite3_vec_init as *const (),
         )));
     });

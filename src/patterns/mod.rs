@@ -425,17 +425,17 @@ pub(crate) fn simhash(text: &str) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         line.hash(&mut hasher);
         let hashed = hasher.finish();
-        for bit in 0..64 {
+        for (bit, weight) in weights.iter_mut().enumerate() {
             if (hashed >> bit) & 1 == 1 {
-                weights[bit] += 1;
+                *weight += 1;
             } else {
-                weights[bit] -= 1;
+                *weight -= 1;
             }
         }
     }
     let mut out = 0u64;
-    for bit in 0..64 {
-        if weights[bit] > 0 {
+    for (bit, weight) in weights.iter().enumerate() {
+        if *weight > 0 {
             out |= 1 << bit;
         }
     }

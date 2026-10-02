@@ -95,12 +95,10 @@ fn reported(metric: &str, findings: &[Finding]) -> BTreeSet<String> {
                     }
                 }
             }
-            ("lexicon_smash", PatternType::Lexicon) => {
-                if finding.title.contains("resource tokens") {
-                    for location in &finding.locations {
-                        if let Some(name) = context_name(&location.context) {
-                            keys.insert(name);
-                        }
+            ("lexicon_smash", PatternType::Lexicon) if finding.title.contains("resource tokens") => {
+                for location in &finding.locations {
+                    if let Some(name) = context_name(&location.context) {
+                        keys.insert(name);
                     }
                 }
             }

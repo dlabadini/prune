@@ -685,11 +685,11 @@ export function pass(value: string) { return trim(value); }
             .map(|finding| finding.pattern_type.as_str())
             .collect();
         assert!(
-            kinds.iter().any(|kind| *kind == "dead_exports"),
+            kinds.contains(&"dead_exports"),
             "findings={kinds:?}"
         );
         assert!(
-            kinds.iter().any(|kind| *kind == "over_abstraction"),
+            kinds.contains(&"over_abstraction"),
             "findings={kinds:?}"
         );
         let again = analyzer.scan().unwrap();
