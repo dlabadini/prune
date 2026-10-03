@@ -72,7 +72,7 @@
   <div class="wrap docs">
     <nav class="docs-nav" aria-label="Docs">
       <span class="group">Start</span>
-      <a href="/setup">Agent setup</a>
+      <a href="#agent-setup">Agent setup</a>
       <a href="#install">Install</a>
       <a href="#quick-start">Quick start</a>
       <span class="group">Run it</span>
@@ -90,12 +90,27 @@
     </nav>
 
     <article class="prose">
-      <h1>Prune docs</h1>
-      <p class="section-lede">Prune is a free, MIT-licensed structural linter for TypeScript and JavaScript. It runs locally, from your terminal, your git hooks, your CI, or your coding agent.</p>
+      <header class="docs-head">
+        <p class="kicker">docs · v0.2.0</p>
+        <h1>Prune docs</h1>
+        <p class="section-lede">Prune is a free, MIT-licensed structural linter for TypeScript and JavaScript. It runs locally, from your terminal, your git hooks, your CI, or your coding agent.</p>
+        <nav class="docs-quick" aria-label="Start here">
+          <a href="#agent-setup">Set up with an agent <span>recommended</span></a>
+          <a href="#install">Install by hand</a>
+          <a href="#commands">Command reference</a>
+          <a href="/docs.md">Markdown version <span>for agents</span></a>
+        </nav>
+      </header>
+
+      <section id="agent-setup" class="agent-setup">
+        <h2>Agent setup</h2>
+        <p class="section-lede">This runbook is written for coding agents. Point yours at <code>prunecode.ai/setup</code> (it's served there as Markdown too) and it works through these steps, using whatever your repo already has.</p>
+<!--SETUP-->
+      </section>
 
       <section id="install">
         <h2>Install</h2>
-        <div class="note">Using a coding agent? Skip this page and tell it: “Set up Prune in this repo by following <a href="/setup">prunecode.ai/setup</a>.” The setup page is a runbook written for agents.</div>
+        <div class="note">Using a coding agent? Skip manual install and tell it: “Set up Prune in this repo by following prunecode.ai/setup.” It follows the <a href="#agent-setup">agent setup</a> runbook above.</div>
         <div class="term snippet"><pre><span class="m"># macOS / Linux binary (installs to ~/.prune/bin)</span>
 curl -fsSL https://prunecode.ai/install.sh | bash</pre></div>
         <div class="term snippet"><pre><span class="m"># per-repo devDependency</span>

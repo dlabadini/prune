@@ -2352,3 +2352,380 @@ button.btn {
     margin-left: 0;
   }
 }
+
+/* ---------- Hero install: the page's primary action ---------- */
+.hero .install {
+  max-width: 560px;
+  box-shadow: 0 24px 50px -36px rgb(60 40 20 / 0.45);
+}
+
+.hero .install-cmd {
+  align-items: flex-start;
+  padding: 16px 16px 16px 18px;
+  min-height: 84px;
+}
+
+.hero .install-cmd code {
+  font-size: 14.5px;
+  padding-top: 4px;
+}
+
+.hero .install-cmd code.is-prompt {
+  font-size: 16.5px;
+  line-height: 1.5;
+  padding-top: 2px;
+}
+
+.copy-strong {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+  padding: 7px 14px;
+  font-weight: 600;
+}
+
+.copy-strong:hover {
+  border-color: var(--ink);
+  opacity: 0.9;
+}
+
+.works-with {
+  margin: 12px 0 0;
+  font: 12.5px var(--mono);
+  color: var(--muted);
+}
+
+/* Markdown-rendered code blocks (docs runbook, content pages) */
+.prose pre:not(.term pre),
+.page pre {
+  margin: 12px 0 18px;
+  padding: 14px 16px;
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow-x: auto;
+  font: 13px/1.65 var(--mono);
+}
+
+.prose pre:not(.term pre) code,
+.page pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.agent-setup h3 {
+  font-family: var(--sans);
+  font-size: 20px;
+  margin-top: 30px;
+}
+
+.agent-setup h4 {
+  font-size: 15px;
+  margin: 18px 0 6px;
+}
+
+.agent-setup li + li {
+  margin-top: 4px;
+}
+
+/* Why: one file vs the whole graph */
+.contrast > div {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.contrast h3 {
+  margin-bottom: 0;
+}
+
+.lint-file {
+  box-shadow: none;
+}
+
+.squiggle {
+  text-decoration: underline wavy #c99a2e;
+  text-underline-offset: 4px;
+}
+
+.graph {
+  width: 100%;
+  height: auto;
+  max-height: 170px;
+  font-family: var(--mono);
+}
+
+.graph .edges path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-opacity: 0.55;
+  stroke-width: 1.4;
+}
+
+.graph .edges path.same {
+  stroke: #c99a2e;
+  stroke-opacity: 0.9;
+  stroke-dasharray: 3 3;
+}
+
+.graph .node rect {
+  fill: var(--card);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+
+.graph .node.entry rect {
+  stroke: var(--leaf);
+  stroke-width: 1.6;
+}
+
+.graph .node.dup rect {
+  stroke: #c99a2e;
+  fill: color-mix(in srgb, #c99a2e 10%, var(--card));
+}
+
+.graph .node.orphan rect {
+  stroke: var(--rust);
+  stroke-dasharray: 4 3;
+  fill: color-mix(in srgb, var(--rust) 8%, var(--card));
+}
+
+.graph text {
+  font-size: 11px;
+  text-anchor: middle;
+  fill: var(--ink);
+}
+
+.graph .orphan text {
+  fill: var(--rust);
+  text-decoration: line-through;
+}
+
+.graph .note {
+  font-size: 10px;
+  fill: var(--muted);
+}
+
+.graph .same-note {
+  fill: #b5862a;
+}
+
+/* Local-first: what runs where */
+.points {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+
+.split .points li + li {
+  margin-top: 0;
+}
+
+.points li {
+  color: var(--muted);
+  padding-left: 18px;
+  position: relative;
+}
+
+.points li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--leaf);
+}
+
+.points b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.machine {
+  position: relative;
+  border: 1.5px solid var(--ink);
+  border-radius: 18px;
+  padding: 34px 22px 22px;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 100% 22px,
+    var(--card);
+  background-blend-mode: normal;
+}
+
+.machine-label {
+  position: absolute;
+  top: -11px;
+  left: 18px;
+  padding: 0 8px;
+  background: var(--bg);
+  font: 600 12px var(--mono);
+}
+
+.pipeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 26px;
+  counter-reset: p;
+}
+
+.pipeline li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 12px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 24px -20px rgb(60 40 20 / 0.5);
+}
+
+.pipeline li + li::before {
+  content: "→";
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  color: var(--muted);
+}
+
+.pipeline b {
+  font-size: 15px;
+}
+
+.pipeline span {
+  font: 11.5px var(--mono);
+  color: var(--muted);
+}
+
+.pipeline .optional {
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+
+.machine-out {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  font: 12.5px var(--mono);
+  color: var(--muted);
+}
+
+.cable {
+  flex: 1;
+  height: 0;
+  border-top: 1.5px dashed var(--line);
+  position: relative;
+}
+
+.cable::after {
+  content: "×";
+  position: absolute;
+  left: 50%;
+  top: -11px;
+  transform: translateX(-50%);
+  background: var(--card);
+  padding: 0 6px;
+  color: var(--rust);
+  font-weight: 700;
+}
+
+.net b {
+  color: var(--ink);
+  margin-right: 6px;
+}
+
+@media (max-width: 640px) {
+  .pipeline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .pipeline li + li::before {
+    display: none;
+  }
+
+  .machine-out {
+    flex-wrap: wrap;
+  }
+}
+
+/* Docs: snippets use the light code style, matching the home page */
+.prose .term {
+  background: var(--code-bg);
+  color: var(--code-ink);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+.prose .term .m { color: var(--code-ln); }
+.prose .term .p,
+.prose .term .g { color: var(--leaf); }
+.prose .term .r { color: var(--rust); }
+.prose .term .y { color: #b5862a; }
+.prose .term .b { color: var(--ink); }
+
+.prose .snippet .copy {
+  background: var(--card);
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.prose .snippet .copy:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+/* Docs header */
+.docs-head {
+  padding-bottom: 28px;
+  margin-bottom: 40px;
+  border-bottom: 1px solid var(--line);
+}
+
+.docs-head .kicker {
+  margin-bottom: 10px;
+}
+
+.docs-head .section-lede {
+  margin-bottom: 18px;
+}
+
+.docs-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.docs-quick a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.docs-quick a:hover {
+  border-color: var(--ink);
+}
+
+.docs-quick a span {
+  font: 11px var(--mono);
+  color: var(--muted);
+}

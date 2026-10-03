@@ -30,6 +30,14 @@ const faqLd = JSON.stringify({
     acceptedAnswer: { '@type': 'Answer', text: a.replace(/`/g, '') },
   })),
 });
+// The docs embed the agent runbook (content/setup.md) as a section, demoted one heading level.
+const setupSection = marked
+  .parse(read('content', 'setup.md'))
+  .replace(/<h1>[\s\S]*?<\/h1>/, '')
+  .replace(/<(\/?)h3>/g, '<$1h4>')
+  .replace(/<(\/?)h2>/g, '<$1h3>');
+const docsHtml = read('views', 'docs.html').replace('<!--SETUP-->', setupSection);
+
 const homeHtml = read('views', 'index.html').replace('<!--FAQ-->', faqHtml).replace('<!--FAQ_LD-->', faqLd);
 
 // Pages that exist as both HTML and Markdown. Agents asking for `Accept: text/markdown` get the
@@ -73,6 +81,7 @@ for (const [route, page] of Object.entries(pages)) {
     res.set('Link', '</llms.txt>; rel="describedby"; type="text/plain", </openapi.json>; rel="service-desc"; type="application/json"');
     if (wantsMarkdown(req)) return sendMarkdown(res, page.md);
     if (route === '/') return res.type('html').send(homeHtml);
+    if (route === '/docs') return res.type('html').send(docsHtml);
     if (page.html) return res.sendFile(path.join(__dirname, 'views', page.html));
     res.type('html').send(renderPage(route, page));
   });

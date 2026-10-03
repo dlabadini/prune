@@ -100,7 +100,7 @@
       </a>
       <nav class="nav-links" aria-label="Main">
         <a class="hide-sm" href="#how">How it works</a>
-        <a class="hide-sm" href="/setup">Setup</a>
+        <a class="hide-sm" href="/docs#agent-setup">Setup</a>
         <a class="hide-sm" href="/docs">Docs</a>
         <a class="gh" href="https://github.com/dlabadini/prune">GitHub</a>
       </nav>
@@ -128,11 +128,12 @@
             </div>
             <div class="install-cmd">
               <code class="is-prompt">Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.</code>
-              <button class="copy" type="button">copy</button>
+              <button class="copy copy-strong" type="button">copy</button>
             </div>
           </div>
+          <p class="works-with">works with Claude Code, Cursor, Codex, Copilot and any MCP client</p>
           <div class="hero-actions">
-            <a href="/setup">What your agent will do</a>
+            <a href="/docs#agent-setup">What your agent will do</a>
             <a href="#how">How it works</a>
             <a href="https://github.com/dlabadini/prune">Source</a>
           </div>
@@ -154,20 +155,41 @@
         <p class="section-lede">Every line an agent writes can pass lint and typecheck while the codebase quietly grows a second <code>User</code> type, a helper nobody calls, and a file nothing imports. Prune reads the whole module graph, so it sees those problems.</p>
         <div class="contrast">
           <div>
-            <h3>eslint, tsc, biome</h3>
+            <h3>eslint · tsc · biome</h3>
+            <figure class="code compact lint-file" aria-label="A linter sees one file at a time">
+              <figcaption><span class="file">src/lib/format.ts</span><span class="lang">one file</span></figcaption>
+<pre><code><span class="k">export function</span> <span class="f">formatDate</span>(d: <span class="t">Date</span>) {
+  <span class="k">const</span> <span class="squiggle">opts</span> = { month: <span class="s">"short"</span> };
+  <span class="k">return</span> d.<span class="f">toLocaleDateString</span>();
+}</code></pre>
+            </figure>
             <ul>
               <li>Unused variables inside a file</li>
               <li>Type errors and syntax</li>
               <li>Style and formatting</li>
-              <li>One file at a time</li>
             </ul>
           </div>
           <div>
             <h3>prune</h3>
+            <svg class="graph" viewBox="0 0 360 150" role="img" aria-label="Prune sees the whole module graph: an orphan file and two duplicate types">
+              <g class="edges">
+                <path d="M70 32 C110 32 110 75 150 75"/>
+                <path d="M70 32 C120 32 140 22 190 22"/>
+                <path d="M190 75 C225 75 230 110 262 110"/>
+                <path class="same" d="M220 22 C290 22 300 60 300 72"/>
+              </g>
+              <g class="node entry"><rect x="10" y="20" width="62" height="24" rx="6"/><text x="41" y="36">page.tsx</text></g>
+              <g class="node"><rect x="150" y="63" width="56" height="24" rx="6"/><text x="178" y="79">api.ts</text></g>
+              <g class="node"><rect x="190" y="10" width="62" height="24" rx="6"/><text x="221" y="26">User</text></g>
+              <g class="node"><rect x="262" y="98" width="68" height="24" rx="6"/><text x="296" y="114">format.ts</text></g>
+              <g class="node dup"><rect x="268" y="60" width="70" height="24" rx="6"/><text x="303" y="76">UserDTO</text></g>
+              <g class="node orphan"><rect x="20" y="100" width="76" height="24" rx="6"/><text x="58" y="116">orphan.ts</text></g>
+              <text class="note" x="58" y="142">nothing imports it</text>
+              <text class="note same-note" x="318" y="46">same shape</text>
+            </svg>
             <ul>
-              <li>Exports nothing reachable imports, through barrels and namespaces</li>
-              <li>Files no entry point reaches</li>
-              <li>The same shape declared under five names</li>
+              <li>Exports and files nothing reachable uses</li>
+              <li>The same shape declared under several names</li>
               <li>God files, runtime import cycles, near-duplicate functions</li>
             </ul>
           </div>
@@ -179,7 +201,7 @@
       <div class="wrap">
         <p class="kicker">set it up</p>
         <h2 id="run-title">You don't configure it. Your agent does.</h2>
-        <p class="section-lede">The one line at the top of this page is the whole install. Your agent follows <a href="/setup">a runbook written for agents</a>, uses what your repo already has, and tells you what it did.</p>
+        <p class="section-lede">The one line at the top of this page is the whole install. Your agent follows <a href="/docs#agent-setup">a runbook written for agents</a>, uses what your repo already has, and tells you what it did.</p>
         <div class="handoff">
           <ol class="agent-steps" aria-label="What the agent does">
             <li><b>Installs</b> Prune with your package manager</li>
@@ -591,19 +613,25 @@ and fix what it reports.</pre></div>
           <div>
             <p class="kicker">local-first</p>
             <h2 id="trust-title">Your code never leaves the shed.</h2>
-            <p class="section-lede">Prune is a single Rust binary. Parsing (Oxc), structural matching (ast-grep) and the index (SQLite) all run on your machine. Semantic matching uses a small local embedding model, and only once you've downloaded it.</p>
-            <ul>
-              <li>No account, no telemetry, no network calls during a scan</li>
-              <li>Next.js and Convex adapters find framework entries for you</li>
-              <li>Fenced boundaries let a package keep its own types on purpose</li>
-              <li>An accuracy harness with labeled fixtures guards precision in CI</li>
+            <p class="section-lede">Prune is one Rust binary with no account and no telemetry. Everything from parsing to the index runs on your machine. A scan makes no network requests; the only download is the optional embedding model, once, if you turn it on.</p>
+            <ul class="points">
+              <li><b>Knows your frameworks.</b> Next.js routes and Convex functions count as entry points, so nothing they load is reported dead.</li>
+              <li><b>Respects boundaries.</b> Fence a package and it may keep its own copies of types on purpose.</li>
+              <li><b>Measured, not guessed.</b> Labeled fixtures check every detector for precision and recall in CI.</li>
             </ul>
           </div>
-          <div class="stats">
-            <div class="stat"><b>0</b><span>bytes of code sent anywhere</span></div>
-            <div class="stat"><b>100%</b><span>precision &amp; recall on labeled fixtures</span></div>
-            <div class="stat"><b>1</b><span>binary: no runtime, no account, no config needed</span></div>
-            <div class="stat"><b>MIT</b><span>free for any use, forever</span></div>
+          <div class="machine" role="img" aria-label="Pipeline on your machine: parse with Oxc, match with ast-grep, index in SQLite, optional local embeddings. No network requests during a scan.">
+            <div class="machine-label">your machine</div>
+            <ol class="pipeline">
+              <li><b>Parse</b><span>Oxc</span></li>
+              <li><b>Match</b><span>ast-grep</span></li>
+              <li><b>Index</b><span>SQLite in .prune/</span></li>
+              <li class="optional"><b>Embed</b><span>local model, opt-in</span></li>
+            </ol>
+            <div class="machine-out">
+              <span class="cable" aria-hidden="true"></span>
+              <span class="net"><b>network</b> 0 requests during a scan</span>
+            </div>
           </div>
         </div>
       </div>
