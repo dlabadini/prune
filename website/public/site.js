@@ -97,3 +97,65 @@ for (const button of themeButtons) {
     } catch {}
   });
 }
+
+// Explorer: the accordion on the left selects what the stage on the right shows. It advances on
+// its own until the visitor interacts (or prefers reduced motion), with a progress line.
+for (const explorer of document.querySelectorAll("[data-explorer]")) {
+  const items = [...explorer.querySelectorAll(".ex-item")];
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const DURATION = 7000;
+  let index = 0;
+  let auto = !reduce;
+  let started = performance.now();
+  let visible = false;
+
+  const select = (next, focus = false) => {
+    index = next;
+    items.forEach((item, i) => {
+      const selected = i === next;
+      item.setAttribute("aria-selected", String(selected));
+      item.tabIndex = selected ? 0 : -1;
+      item.style.setProperty("--progress", "0%");
+      document.getElementById(item.getAttribute("aria-controls")).hidden = !selected;
+    });
+    if (focus) items[next].focus();
+    started = performance.now();
+  };
+
+  const stop = () => {
+    auto = false;
+    for (const item of items) item.style.setProperty("--progress", "0%");
+  };
+
+  items.forEach((item, i) => {
+    item.addEventListener("click", () => {
+      stop();
+      select(i);
+    });
+    item.addEventListener("keydown", (event) => {
+      const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+      if (!step) return;
+      event.preventDefault();
+      stop();
+      select((i + step + items.length) % items.length, true);
+    });
+  });
+
+  new IntersectionObserver(([entry]) => {
+    visible = entry.isIntersecting;
+    if (visible) started = performance.now();
+  }, { threshold: 0.35 }).observe(explorer);
+
+  const tick = (now) => {
+    if (!auto) return;
+    if (visible) {
+      const t = Math.min(1, (now - started) / DURATION);
+      items[index].style.setProperty("--progress", `${(t * 100).toFixed(1)}%`);
+      if (t >= 1) select((index + 1) % items.length);
+    } else {
+      started = now - (parseFloat(items[index].style.getPropertyValue("--progress")) || 0) / 100 * DURATION;
+    }
+    requestAnimationFrame(tick);
+  };
+  if (auto) requestAnimationFrame(tick);
+}

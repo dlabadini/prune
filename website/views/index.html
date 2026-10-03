@@ -282,56 +282,122 @@ and fix what it reports.</pre></div>
         <p class="kicker">how it works</p>
         <h2 id="how-title">Prune marks. Your agent cuts. Prune checks the cut.</h2>
         <p class="section-lede">Prune never rewrites your code behind your back. It finds the dead wood, writes a precise task, and verifies the result, so an agent can clean up without guessing.</p>
-        <div class="steps">
-          <div class="step">
-            <div class="step-head"><h3>Mark</h3></div>
-            <p>Prune indexes the module graph locally and walks it from every entry point: <code>package.json</code>, configs, scripts, and Next.js and Convex routes. Every export gets a reachability class.</p>
-          </div>
-          <div class="step">
-            <div class="step-head"><h3>Hand off</h3></div>
-            <p><code>prune tasks</code> turns findings into a prioritized checklist. Each task says where, why, what to change, and the exact command that proves it's done.</p>
-          </div>
-          <div class="step">
-            <div class="step-head"><h3>Verify</h3></div>
-            <p>The agent runs each task's check. Fixes Prune applies itself are reverted automatically if your typecheck fails, and the pre-commit check stops new dead wood at the door.</p>
-          </div>
-        </div>
-        <div class="demo">
-          <figure>
-            <div class="term">
-              <div class="term-bar"><i></i><i></i><i></i><span>pre-commit</span></div>
-<pre><span class="p">$</span> git commit -m "use helper directly"
-<span class="r">prune check: 1 new finding(s) at or above medium</span>
-<span class="m">(2 file(s) and their importers)</span>
 
-  <span class="y">medium</span> Dead Exports — 2 unused in lib.ts
-    src/lib.ts:1
-    Next: prune 2 exports in src/lib.ts
-    Plan: prune plan dead_exports-72b08f4a
+        <div class="explorer" data-explorer>
+          <div class="ex-list" role="tablist" aria-orientation="vertical" aria-label="How Prune works">
+            <button class="ex-item" role="tab" id="ex-t1" aria-controls="ex-p1" aria-selected="true">
+              <span class="ex-num">01</span>
+              <span class="ex-title">Mark what agents leave behind</span>
+              <span class="ex-desc"><span>Prune walks your module graph from every real entry point: <code>package.json</code>, configs, scripts, Next.js and Convex routes. Every export gets a reachability class, so "unused" means unused.</span></span>
+              <span class="ex-progress" aria-hidden="true"></span>
+            </button>
+            <button class="ex-item" role="tab" id="ex-t2" aria-controls="ex-p2" aria-selected="false" tabindex="-1">
+              <span class="ex-num">02</span>
+              <span class="ex-title">Hand the cleanup to your agent</span>
+              <span class="ex-desc"><span>Each finding becomes a task with the location, the reason, the exact change, and the command that proves it's done. When the fix is mechanical, Prune offers to do it itself.</span></span>
+              <span class="ex-progress" aria-hidden="true"></span>
+            </button>
+            <button class="ex-item" role="tab" id="ex-t3" aria-controls="ex-p3" aria-selected="false" tabindex="-1">
+              <span class="ex-num">03</span>
+              <span class="ex-title">Verify every cut</span>
+              <span class="ex-desc"><span>A task is done only when its check passes. Fixes Prune applies are written one at a time, typechecked, and reverted if anything breaks.</span></span>
+              <span class="ex-progress" aria-hidden="true"></span>
+            </button>
+            <button class="ex-item" role="tab" id="ex-t4" aria-controls="ex-p4" aria-selected="false" tabindex="-1">
+              <span class="ex-num">04</span>
+              <span class="ex-title">Guard the next commit</span>
+              <span class="ex-desc"><span>The pre-commit check looks only at what you staged. Debt you already have is baselined and never blocks; a new duplicate type is caught before it lands.</span></span>
+              <span class="ex-progress" aria-hidden="true"></span>
+            </button>
+          </div>
 
-Fix them, or accept them with `prune baseline`
-and commit the baseline.
-<span class="m">Skip once with `git commit --no-verify`.</span></pre>
+          <div class="ex-stage">
+            <!-- 01 · annotated source -->
+            <div class="ex-panel" role="tabpanel" id="ex-p1" aria-labelledby="ex-t1">
+              <figure class="code">
+                <figcaption><span class="file">src/lib/format.ts</span><span class="lang">ts</span></figcaption>
+<pre><code><span class="ln">1</span><span class="k">import</span> { parseISO } <span class="k">from</span> <span class="s">"date-fns"</span>;
+<span class="ln">2</span>
+<span class="row dead"><span class="ln">3</span><span class="k">export function</span> <span class="f">formatDate</span>(d: <span class="t">Date</span>) {<span class="tag tag-unused">unused</span></span>
+<span class="row dead"><span class="ln">4</span>  <span class="k">return</span> d.<span class="f">toLocaleDateString</span>(<span class="s">"en-US"</span>);</span>
+<span class="row dead"><span class="ln">5</span>}</span>
+<span class="ln">6</span>
+<span class="row warn"><span class="ln">7</span><span class="k">export function</span> <span class="f">toISO</span>(d: <span class="t">Date</span>) {<span class="tag tag-same">same_file_only</span></span>
+<span class="ln">8</span>  <span class="k">return</span> d.<span class="f">toISOString</span>();
+<span class="ln">9</span>}
+<span class="ln">10</span>
+<span class="row live"><span class="ln">11</span><span class="k">export const</span> <span class="f">stamp</span> = () =&gt; <span class="f">toISO</span>(<span class="k">new</span> <span class="t">Date</span>());<span class="tag tag-used">used · api/log.ts</span></span></code></pre>
+              </figure>
             </div>
-            <figcaption>Your change stopped using <code>used()</code>, so the hook caught the export it left behind in a file you didn't touch.</figcaption>
-          </figure>
-          <figure>
-            <div class="term">
-              <div class="term-bar"><i></i><i></i><i></i><span>claude code</span></div>
-<pre><span class="u">› Run prune tasks -n 10 and work through them.</span>
 
-<span class="m">● prune.tasks(limit: 10)</span>
-  4 tasks · P1 ×2 · P2 ×1 · P4 ×1
-<span class="m">● prune.safe_to_delete(src/legacy/orphan.ts, *)</span>
-  safe_to_delete: <span class="g">true</span> · no importers, no tests
-<span class="m">● Bash(prune fix --apply --path-prefix src/legacy)</span>
-  <span class="g">applied</span> delete src/legacy/orphan.ts
-<span class="m">● Bash(prune verify dead_exports-6887f17e)</span>
-  <span class="g">✓</span> Finding resolved
-  Next: Interface Sprawl — 3 types for User …</pre>
+            <!-- 02 · task card -->
+            <div class="ex-panel" role="tabpanel" id="ex-p2" aria-labelledby="ex-t2" hidden>
+              <div class="tasks">
+                <article class="task task-open">
+                  <header><span class="prio">P1</span><span class="kind">Dead exports</span><span class="state">open</span></header>
+                  <h4>2 exports nothing needs in format.ts</h4>
+                  <dl>
+                    <dt>where</dt><dd><code>src/lib/format.ts:3</code> <code>:7</code></dd>
+                    <dt>change</dt><dd>Delete <code>formatDate</code>; drop <code>export</code> from <code>toISO</code></dd>
+                    <dt>autofix</dt><dd><code>prune fix --apply --path-prefix src/lib/format.ts</code></dd>
+                    <dt>done when</dt><dd><code>prune verify dead_exports-72b08f4a</code></dd>
+                  </dl>
+                </article>
+                <article class="task"><header><span class="prio p2">P2</span><span class="kind">Interface sprawl</span></header><h4>3 types for User: User · UserDTO · UserInfo</h4></article>
+                <article class="task"><header><span class="prio p2">P2</span><span class="kind">Import cycle</span></header><h4>auth.ts → session.ts → auth.ts</h4></article>
+              </div>
             </div>
-            <figcaption>Agents call Prune over MCP. They get the work list and can check it's safe before deleting anything.</figcaption>
-          </figure>
+
+            <!-- 03 · diff + checks -->
+            <div class="ex-panel" role="tabpanel" id="ex-p3" aria-labelledby="ex-t3" hidden>
+              <figure class="code">
+                <figcaption><span class="file">src/lib/format.ts</span><span class="lang">diff</span></figcaption>
+<pre><code><span class="row del"><span class="ln">3</span><span class="mark">−</span><span class="k">export function</span> <span class="f">formatDate</span>(d: <span class="t">Date</span>) {</span>
+<span class="row del"><span class="ln">4</span><span class="mark">−</span>  <span class="k">return</span> d.<span class="f">toLocaleDateString</span>(<span class="s">"en-US"</span>);</span>
+<span class="row del"><span class="ln">5</span><span class="mark">−</span>}</span>
+<span class="row del"><span class="ln">6</span><span class="mark">−</span></span>
+<span class="row del"><span class="ln">7</span><span class="mark">−</span><span class="k">export function</span> <span class="f">toISO</span>(d: <span class="t">Date</span>) {</span>
+<span class="row add"><span class="ln">3</span><span class="mark">+</span><span class="k">function</span> <span class="f">toISO</span>(d: <span class="t">Date</span>) {</span>
+<span class="ln">4</span><span class="mark"> </span>  <span class="k">return</span> d.<span class="f">toISOString</span>();
+<span class="ln">5</span><span class="mark"> </span>}</code></pre>
+              </figure>
+              <ul class="checks">
+                <li><span class="ok">✓</span> typecheck <span class="muted">bun run typecheck</span></li>
+                <li><span class="ok">✓</span> finding resolved <span class="muted">prune verify dead_exports-72b08f4a</span></li>
+                <li><span class="ok">✓</span> 9 lines removed, 0 files broken</li>
+              </ul>
+            </div>
+
+            <!-- 04 · commit gate -->
+            <div class="ex-panel" role="tabpanel" id="ex-p4" aria-labelledby="ex-t4" hidden>
+              <div class="gate">
+                <div class="gate-head"><span class="gate-dot"></span>pre-commit · prune check<span class="gate-result">blocked</span></div>
+                <div class="gate-body">
+                  <p class="gate-line"><b>1 new finding</b> in what you staged</p>
+                  <div class="pair">
+                    <figure class="code compact">
+                      <figcaption><span class="file">src/types/user.ts</span><span class="lang">existing</span></figcaption>
+<pre><code><span class="k">export interface</span> <span class="t">User</span> {
+  id: <span class="t">string</span>;
+  email: <span class="t">string</span>;
+  name: <span class="t">string</span>;
+}</code></pre>
+                    </figure>
+                    <figure class="code compact staged">
+                      <figcaption><span class="file">src/api/dto.ts</span><span class="lang">staged</span></figcaption>
+<pre><code><span class="k">export interface</span> <span class="t">UserDTO</span> {
+  id: <span class="t">string</span>;
+  email: <span class="t">string</span>;
+  name: <span class="t">string</span>;
+}</code></pre>
+                    </figure>
+                  </div>
+                  <p class="gate-next">Interface sprawl: <code>UserDTO</code> restates <code>User</code>. Import <code>User</code> instead.</p>
+                  <p class="gate-base">37 existing findings are in the baseline and don't block.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
