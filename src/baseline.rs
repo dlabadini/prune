@@ -78,6 +78,21 @@ pub fn changed_files(root: &Path, base: &str) -> std::io::Result<HashSet<String>
     Ok(files)
 }
 
+/// Files staged for commit (added, copied, modified, renamed), repo-relative to `root`.
+pub fn staged_files(root: &Path) -> std::io::Result<HashSet<String>> {
+    let prefix = git(root, &["rev-parse", "--show-prefix"])?.trim().to_string();
+    let diff = git(
+        root,
+        &["diff", "--cached", "--name-only", "--relative", "--diff-filter=ACMR"],
+    )?;
+    Ok(diff
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|line| line.strip_prefix(&prefix).unwrap_or(line).to_string())
+        .collect())
+}
+
 fn git(root: &Path, args: &[&str]) -> std::io::Result<String> {
     let output = std::process::Command::new("git")
         .args(args)
@@ -114,6 +129,24 @@ pub fn with_dependents(db: &Database, files: &HashSet<String>) -> HashSet<String
     }
     let mut out: HashSet<String> = seen.into_iter().map(|id| graph.path(id).to_string()).collect();
     out.extend(files.iter().cloned());
+    out
+}
+
+/// `files` plus the files they import directly. A change to a file can leave exports in the
+/// files it imports unused, so a baselined check looks one hop down as well.
+pub fn with_imports(db: &Database, files: &HashSet<String>) -> HashSet<String> {
+    let mut out = files.clone();
+    let Ok(graph) = ModuleGraph::load(db) else {
+        return out;
+    };
+    let ids: HashSet<i64> = files.iter().filter_map(|path| graph.file_id(path)).collect();
+    for edge in &graph.edges {
+        if let Some(target) = edge.target_file_id {
+            if ids.contains(&edge.source_file_id) {
+                out.insert(graph.path(target).to_string());
+            }
+        }
+    }
     out
 }
 

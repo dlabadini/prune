@@ -75,6 +75,11 @@ pub fn analyze(source: &str, extension: &str) -> Vec<StructuralHit> {
         }
     }
 
+    // Overlapping patterns hit the same declaration twice: `function $NAME`
+    // matches the declaration inside `export function`, and `const $NAME`
+    // matches inside `export const`. Keep one hit per declaration.
+    let mut seen = std::collections::HashSet::new();
+    hits.retain(|hit| seen.insert((hit.kind, hit.name.clone(), hit.line)));
     hits
 }
 
@@ -98,5 +103,23 @@ export function pass(value: string) {
         assert!(hits
             .iter()
             .any(|hit| hit.kind == "wrapper" && hit.name == "pass"));
+    }
+
+    #[test]
+    fn exported_wrappers_are_reported_once() {
+        let source = r#"
+export function used() { return helper(); }
+export function helper() { return 1; }
+export const arrow = (x: number) => helper(x);
+function local(x: number) { return helper(x); }
+"#;
+        let hits = analyze(source, "ts");
+        for name in ["used", "arrow", "local"] {
+            let count = hits
+                .iter()
+                .filter(|hit| hit.kind == "wrapper" && hit.name == name)
+                .count();
+            assert_eq!(count, 1, "{name}: {hits:?}");
+        }
     }
 }

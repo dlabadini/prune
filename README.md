@@ -1,59 +1,143 @@
 # Prune
 
-**The guardrail for AI-assisted refactoring.**
+**The structural linter for AI-written code.** Free, MIT licensed, local-first.
 
-Prune detects structural and semantic anti-patterns in codebases—particularly those introduced by AI coding assistants—and provides structured refactor plans for cleanup.
+Linters catch syntax. Prune catches the conceptual mess coding agents leave behind in
+TypeScript/JavaScript codebases: dead exports and unreachable files, god files, the same type
+under five names, import cycles, near-duplicate functions. It then hands the cleanup back to your
+agent as a list of verifiable tasks.
 
-## The Problem
+Run it three ways:
 
-AI coding tools (Copilot, Cursor, Claude, etc.) produce functional but messy code:
-- Redundant logic (same concept implemented multiple ways)
-- Interface proliferation (inline types everywhere)
-- Over-abstraction (unnecessary indirection)
-- Inconsistent patterns across files
+- **In your loop**: `prune` opens a TUI; `prune scan` prints findings.
+- **In pre-commit and CI**: `prune check` fails a commit only on *new* findings in what you staged.
+- **In your agent**: `prune tasks` prints a prioritized checklist; `prune mcp` serves the same over MCP.
 
-Existing linters catch syntax issues, not these conceptual problems. **Prune fills this gap.**
+Nothing leaves your machine. The index lives in `.prune/`, and optional semantic matching uses a
+local embedding model.
 
-## Installation
+## Install
 
-### Quick Install (macOS/Linux)
+**Using a coding agent?** Tell it: *"Set up Prune in this repo by following https://prunecode.ai/setup."*
+That page is a runbook for agents. It installs Prune with your package manager, records a baseline,
+wires `prune check` into your existing hooks, and connects the MCP server.
+
 
 ```bash
+# macOS / Linux binary
 curl -fsSL https://prunecode.ai/install.sh | bash
-```
 
-### Homebrew (macOS)
+# npm (per-repo devDependency, like any other lint tool)
+npm i -D prunecode
 
-```bash
-brew install prunecode/tap/prune
-```
-
-### Cargo (from source)
-
-```bash
+# from source
 cargo install prunecode
 ```
 
-### Direct Download
+Binaries for macOS and Linux (x86_64, arm64) are attached to each
+[GitHub release](https://github.com/dlabadini/prune/releases).
 
-Download binaries from [Releases](https://github.com/prunecode/prune/releases).
-
-## Quick Start
+## Quick start
 
 ```bash
-# In the repo you want to check
-prune init
-prune scan
+prune init        # writes .prunerc (commit it) and ignores .prune/
+prune scan        # findings, with a score
+prune tasks       # the same findings as a prioritized checklist
+prune             # interactive TUI
 ```
 
-`prune init` writes `.prunerc` (commit this) and adds `.prune/` to `.gitignore`. The local index lives only under `.prune/`.
+## Pre-commit and CI
+
+`prune check` checks the files staged for commit (or the files you pass) and the files that
+import them. It fails only on findings at or above `--fail-on` (default `high`). It never
+downloads a model, so it stays fast.
+
+Existing debt shouldn't block commits. Record it once and commit the baseline:
 
 ```bash
-# Interactive TUI
-prune
+prune baseline    # writes .prune-baseline.json
+```
 
-# JSON output for CI
-prune scan --json
+With a baseline, `check` fails only on findings the baseline doesn't contain. It also looks at
+the files your staged files import, so it catches an export your change left unused.
+
+**[pre-commit](https://pre-commit.com)** (`.pre-commit-config.yaml`):
+
+```yaml
+repos:
+  - repo: https://github.com/dlabadini/prune
+    rev: v0.2.0
+    hooks:
+      - id: prune          # uses `prune` on PATH; `prune-cargo` builds from source instead
+        args: [--fail-on, medium]
+```
+
+**husky** (`.husky/pre-commit`):
+
+```bash
+npx prune check
+```
+
+**lefthook** (`lefthook.yml`):
+
+```yaml
+pre-commit:
+  commands:
+    prune:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: npx prune check {staged_files}
+```
+
+**Plain git hook**: `printf '#!/bin/sh\nexec prune check\n' > .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+
+**CI**: `prune scan --baseline --ci` exits 1 on any finding missing from the baseline.
+`prune scan --changed origin/main` limits output to what a branch touched.
+
+## Agents
+
+Give an agent the work list and the means to check its own work:
+
+```bash
+prune tasks                 # markdown checklist, most urgent first
+prune tasks --json -n 20    # machine-readable
+prune tasks --changed main  # only what this branch touched
+```
+
+Each task carries its id, priority, locations, why it matters, and the change to make. Where
+`prune fix` can do the job itself, the task includes an `autofix` command. Every task ends with
+a `done when` command, `prune verify <id>`, which exits 0 once the finding is gone. A prompt
+that works well:
+
+> Run `prune tasks -n 10`. Work the tasks in order. Prefer each task's `autofix`. After each,
+> run its `done when` command and your typecheck before moving on.
+
+### MCP
+
+```bash
+claude mcp add prune -- prune mcp            # Claude Code (npm install: -- npx prune mcp)
+```
+
+```json
+// .mcp.json / .cursor/mcp.json
+{ "mcpServers": { "prune": { "command": "prune", "args": ["mcp"] } } }
+```
+
+| Tool | Answers |
+|------|---------|
+| `tasks` | Prioritized tasks (filters: `limit`, `min_severity`, `changed`, `use_baseline`) |
+| `scan` | Findings and score, most severe first (same filters) |
+| `plan` / `compose_plan` | Markdown or structured refactor plan for one finding |
+| `verify` | Whether a finding is resolved |
+| `who_uses` | Usage class of an export, every file that uses it (through barrels, namespaces, Convex references), and barrels that re-export it |
+| `safe_to_delete` | Whether deleting or un-exporting it is safe, with reasons |
+| `rename_impact` | Files and edit counts a rename touches (nothing is written) |
+| `recent_files` | Files touched in recent git history |
+
+For `AGENTS.md` / `CLAUDE.md`:
+
+```markdown
+Before deleting or renaming an export, ask Prune (`safe_to_delete`, `rename_impact`).
+After a refactor, run `prune check --fail-on medium` and fix what it reports.
 ```
 
 ## Usage
@@ -95,6 +179,12 @@ Just run `prune` in your project directory:
 ```bash
 # Scan current directory
 prune scan
+
+# Pre-commit gate over staged files (or the files given)
+prune check [FILES...] [--fail-on high] [--all]
+
+# Prioritized task list for an agent (markdown, or --json)
+prune tasks [-n 20] [--min-severity medium] [--changed main]
 
 # Scan specific path
 prune scan -p /path/to/project
@@ -239,17 +329,6 @@ check = "bun run typecheck"
 Finding ids derive from the pattern and the symbols (or files) involved, not titles or line
 numbers, so they stay stable across unrelated edits and work as baseline keys.
 
-## MCP
-
-`prune mcp` serves tools over stdio. Besides `scan`, `plan`, `verify`, `compose_plan`, and
-`recent_files`, agents can ask before editing:
-
-| Tool | Answers |
-|------|---------|
-| `who_uses` | Usage class of an export, every file that uses it (through barrels, namespaces, Convex references), and barrels that re-export it |
-| `safe_to_delete` | Whether deleting or un-exporting it is safe, with reasons |
-| `rename_impact` | Files and edit counts a rename touches (nothing is written) |
-
 ## Refactor Plans
 
 When you select a finding, Prune generates a structured markdown plan:
@@ -283,24 +362,26 @@ Multiple inline type definitions represent the same "User" domain concept.
 
 Copy this plan and feed it to your AI agent (Cursor, Claude Code, Aider, etc.) to execute the refactor.
 
-## Pricing
+## Contributing
 
-| Tier | Price | Features |
-|------|-------|----------|
-| **Trial** | Free (14 days) | Full functionality |
-| **Solo** | $99 one-time | CLI, all patterns, 1 year updates |
-| **Pro** | $149/year | Desktop app, watch mode, ongoing updates |
-| **Team** | $99/seat/year | Shared config, CI integration, priority support |
+Issues and pull requests are welcome.
 
-[Start Free Trial →](https://prunecode.ai/trial)
+```bash
+cargo test                                   # unit and integration tests
+cargo test --test accuracy -- --nocapture    # precision/recall on labeled fixtures
+cargo clippy --all-targets -- -D warnings
+```
+
+New detectors and framework adapters should come with a labeled fixture under `tests/fixtures/`
+(`labels.json` lists the findings that must and must not appear). The accuracy harness keeps
+precision and recall honest.
 
 ## License
 
-Prune is source-available software. See [LICENSE](LICENSE) for details.
+[MIT](LICENSE). Free for any use, commercial included.
 
 ## Links
 
 - [Website](https://prunecode.ai)
-- [Documentation](https://prunecode.ai/docs)
-- [Discord](https://discord.gg/prune)
-- [Twitter](https://twitter.com/prunedev)
+- [Docs](https://prunecode.ai/docs)
+- [Issues](https://github.com/dlabadini/prune/issues)

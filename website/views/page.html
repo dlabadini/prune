@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script>
+    try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch {}
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}} — Prune</title>
+  <meta name="description" content="{{description}}">
+  <meta name="robots" content="{{robots}}">
+  <link rel="canonical" href="https://prunecode.ai{{path}}">
+  <link rel="alternate" type="text/markdown" href="{{path}}.md">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://prunecode.ai{{path}}">
+  <meta property="og:title" content="{{title}} — Prune">
+  <meta property="og:description" content="{{description}}">
+  <meta property="og:image" content="https://prunecode.ai/og.png">
+  <meta property="og:site_name" content="Prune">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://prunecode.ai/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Prune home">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M6 5.7a2.7 2.7 0 0 1 5.4 0v20.2L6 29z" fill="currentColor"/>
+          <path d="M13 4.2A1.2 1.2 0 0 1 14.2 3h2.4a9 9 0 0 1 0 18h-2.4A1.2 1.2 0 0 1 13 19.8z" fill="#5e9f4e"/>
+        </svg>
+        prune
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a class="hide-sm" href="/#how">How it works</a>
+        <a href="/docs">Docs</a>
+        <a class="gh" href="https://github.com/dlabadini/prune">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <article class="prose page">
+{{content}}
+    </article>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <span>prune · MIT licensed · © 2026</span>
+      <div class="footer-end">
+        <nav aria-label="Footer">
+          <a href="/docs">Docs</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="/privacy">Privacy</a>
+          <a href="https://github.com/dlabadini/prune">GitHub</a>
+          <a href="/llms.txt">llms.txt</a>
+        </nav>
+        <div class="theme-switch" role="group" aria-label="Color theme">
+          <button type="button" data-theme-choice="light" aria-pressed="true">light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">dark</button>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/site.js" defer></script>
+  <script type="module">
+    import { inject } from 'https://cdn.jsdelivr.net/npm/@vercel/analytics@latest/dist/script.js';
+    inject();
+  </script>
+</body>
+</html>

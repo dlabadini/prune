@@ -7,8 +7,9 @@ mod cli;
 mod tui;
 
 use clap::Parser;
-use cli::{Cli, Commands, LicenseAction};
-use prune::{Analyzer, Config, LicenseManager, LicenseStatus, LicenseTier, RefactorPlan};
+use cli::{Cli, Commands};
+use prune::{Analyzer, Config, RefactorPlan, Severity};
+use std::collections::HashSet;
 use std::io::{self};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -34,6 +35,42 @@ fn main() {
             changed,
             ci,
         }) => cmd_scan(&root, json, watch, ScanFilter { baseline, changed, ci }),
+        Some(Commands::Check {
+            files,
+            all,
+            fail_on,
+            baseline,
+            no_baseline,
+            json,
+        }) => cmd_check(
+            &root,
+            CheckOptions {
+                files,
+                all,
+                fail_on,
+                baseline,
+                no_baseline,
+                json,
+            },
+        ),
+        Some(Commands::Tasks {
+            json,
+            limit,
+            min_severity,
+            changed,
+            baseline,
+            output,
+        }) => cmd_tasks(
+            &root,
+            TasksOptions {
+                json,
+                limit,
+                min_severity,
+                changed,
+                baseline,
+                output,
+            },
+        ),
         Some(Commands::Baseline { output }) => cmd_baseline(&root, &output),
         Some(Commands::Fix {
             apply,
@@ -62,7 +99,6 @@ fn main() {
         Some(Commands::Init { force }) => cmd_init(&root, force),
         Some(Commands::Config) => cmd_config(&root),
         Some(Commands::Mcp) => cmd_mcp(&root),
-        Some(Commands::License { action }) => cmd_license(action),
     };
 
     if let Err(e) = result {
@@ -100,6 +136,229 @@ struct ScanFilter {
     ci: bool,
 }
 
+fn under_root(root: &std::path::Path, path: &std::path::Path) -> std::path::PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    }
+}
+
+/// Drop findings recorded in `baseline`, then keep those touching files changed since `changed`
+/// (and the files importing them).
+fn filter_findings(
+    root: &std::path::Path,
+    analyzer: &Analyzer,
+    mut findings: Vec<prune::patterns::Finding>,
+    baseline: Option<&std::path::Path>,
+    changed: Option<&str>,
+) -> io::Result<Vec<prune::patterns::Finding>> {
+    if let Some(path) = baseline {
+        let path = under_root(root, path);
+        let baseline = prune::baseline::Baseline::load(&path).map_err(|error| {
+            io::Error::other(format!("cannot read baseline {}: {error}", path.display()))
+        })?;
+        findings = baseline.new_findings(findings);
+    }
+    if let Some(base) = changed {
+        let changed = prune::baseline::changed_files(root, base)?;
+        let scope = prune::baseline::with_dependents(analyzer.database(), &changed);
+        findings = prune::baseline::touching(findings, &scope);
+    }
+    Ok(findings)
+}
+
+fn parse_severity(value: &str) -> io::Result<Severity> {
+    Severity::parse(value).ok_or_else(|| {
+        io::Error::other(format!(
+            "unknown severity `{value}` (use low, medium, high, or critical)"
+        ))
+    })
+}
+
+struct CheckOptions {
+    files: Vec<String>,
+    all: bool,
+    fail_on: String,
+    baseline: std::path::PathBuf,
+    no_baseline: bool,
+    json: bool,
+}
+
+/// Pre-commit gate. Exits 1 when a new finding at or above `fail_on` touches the checked files.
+fn cmd_check(root: &std::path::Path, options: CheckOptions) -> io::Result<()> {
+    let fail_on = parse_severity(&options.fail_on)?;
+    let scope_files: Option<HashSet<String>> = if options.all {
+        None
+    } else {
+        let files: HashSet<String> = if options.files.is_empty() {
+            prune::baseline::staged_files(root)?
+        } else {
+            options
+                .files
+                .iter()
+                .map(|file| {
+                    let path = std::path::Path::new(file);
+                    let relative = path.strip_prefix(root).unwrap_or(path);
+                    relative
+                        .to_string_lossy()
+                        .trim_start_matches("./")
+                        .replace('\\', "/")
+                })
+                .collect()
+        };
+        let files: HashSet<String> = files
+            .into_iter()
+            .filter(|file| {
+                std::path::Path::new(file)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(prune::analyzer::is_supported_extension)
+            })
+            .collect();
+        if files.is_empty() {
+            if options.json {
+                println!("{}", serde_json::json!({ "passed": true, "checked_files": 0, "findings": [] }));
+            } else {
+                println!("prune check: no TypeScript/JavaScript files to check.");
+            }
+            return Ok(());
+        }
+        Some(files)
+    };
+
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    // A commit hook must never trigger the embedding model download.
+    let embeddings = analyzer.config().effective_embeddings_enabled(root)
+        && prune::embeddings::embedding_model_ready_for(root);
+    analyzer.config_mut().thresholds.embeddings_enabled = Some(embeddings);
+    let result = analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
+
+    let baseline_path = under_root(root, &options.baseline);
+    let use_baseline = !options.no_baseline && baseline_path.exists();
+    let mut findings = filter_findings(
+        root,
+        &analyzer,
+        result.findings,
+        use_baseline.then_some(baseline_path.as_path()),
+        None,
+    )?;
+    if let Some(files) = &scope_files {
+        let mut scope = prune::baseline::with_dependents(analyzer.database(), files);
+        if use_baseline {
+            // Only new findings fail, so also catch exports this change left unused.
+            scope.extend(prune::baseline::with_imports(analyzer.database(), files));
+        }
+        findings = prune::baseline::touching(findings, &scope);
+    }
+    let (failing, notes): (Vec<_>, Vec<_>) = findings
+        .into_iter()
+        .partition(|finding| finding.severity >= fail_on);
+
+    if options.json {
+        let output = serde_json::json!({
+            "passed": failing.is_empty(),
+            "fail_on": fail_on.as_str(),
+            "baseline": use_baseline.then(|| options.baseline.display().to_string()),
+            "checked_files": scope_files.as_ref().map(|files| files.len()),
+            "failing": failing,
+            "below_threshold": notes.len(),
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+    } else {
+        let checked = match &scope_files {
+            Some(files) => format!("{} file(s) and their importers", files.len()),
+            None => format!("{} files", result.files_scanned),
+        };
+        if failing.is_empty() {
+            println!(
+                "prune check: passed ({checked}; {} below {}).",
+                notes.len(),
+                fail_on.as_str()
+            );
+        } else {
+            println!(
+                "prune check: {} new finding(s) at or above {} ({checked}):",
+                failing.len(),
+                fail_on.as_str()
+            );
+            println!();
+            for finding in &failing {
+                println!(
+                    "  {} {} — {}",
+                    finding.severity.as_str(),
+                    finding.pattern_type.display_name(),
+                    finding.title
+                );
+                if let Some(location) = finding.locations.first() {
+                    println!("    {}:{}", location.file, location.start_line);
+                }
+                let next = if finding.action_summary.is_empty() {
+                    prune::score::next_line(finding)
+                } else {
+                    finding.action_summary.clone()
+                };
+                println!("    Next: {next}");
+                println!("    Plan: prune plan {}", finding.id);
+            }
+            println!();
+            if use_baseline {
+                println!("Fix them, or accept them with `prune baseline` and commit the baseline.");
+            } else {
+                println!("Fix them, or record existing debt with `prune baseline` so only new findings fail.");
+            }
+            println!("Skip once with `git commit --no-verify`.");
+        }
+    }
+
+    if !failing.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
+}
+
+struct TasksOptions {
+    json: bool,
+    limit: Option<usize>,
+    min_severity: String,
+    changed: Option<String>,
+    baseline: Option<std::path::PathBuf>,
+    output: Option<std::path::PathBuf>,
+}
+
+fn cmd_tasks(root: &std::path::Path, options: TasksOptions) -> io::Result<()> {
+    let min_severity = parse_severity(&options.min_severity)?;
+    let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
+    let result = analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
+    let findings = filter_findings(
+        root,
+        &analyzer,
+        result.findings,
+        options.baseline.as_deref(),
+        options.changed.as_deref(),
+    )?;
+    let tasks = prune::tasks::build(&findings, min_severity, options.limit);
+    let text = if options.json {
+        serde_json::to_string_pretty(&serde_json::json!({
+            "total_findings": findings.len(),
+            "tasks": tasks,
+        }))
+        .unwrap()
+            + "\n"
+    } else {
+        prune::tasks::render_markdown(&tasks, findings.len())
+    };
+    match options.output {
+        Some(path) => {
+            let path = under_root(root, &path);
+            std::fs::write(&path, text)?;
+            eprintln!("Wrote {} task(s) to {}", tasks.len(), path.display());
+        }
+        None => print!("{text}"),
+    }
+    Ok(())
+}
+
 fn cmd_baseline(root: &std::path::Path, output: &std::path::Path) -> io::Result<()> {
     let mut analyzer = Analyzer::new(root).map_err(|e| io::Error::other(e.to_string()))?;
     let result = analyzer.scan().map_err(|e| io::Error::other(e.to_string()))?;
@@ -129,22 +388,13 @@ fn cmd_scan(
         .scan()
         .map_err(|e| io::Error::other(e.to_string()))?;
     let total_findings = result.findings.len();
-    if let Some(path) = &filter.baseline {
-        let path = if path.is_absolute() {
-            path.clone()
-        } else {
-            root.join(path)
-        };
-        let baseline = prune::baseline::Baseline::load(&path).map_err(|error| {
-            io::Error::other(format!("cannot read baseline {}: {error}", path.display()))
-        })?;
-        result.findings = baseline.new_findings(std::mem::take(&mut result.findings));
-    }
-    if let Some(base) = &filter.changed {
-        let changed = prune::baseline::changed_files(root, base)?;
-        let scope = prune::baseline::with_dependents(analyzer.database(), &changed);
-        result.findings = prune::baseline::touching(std::mem::take(&mut result.findings), &scope);
-    }
+    result.findings = filter_findings(
+        root,
+        &analyzer,
+        std::mem::take(&mut result.findings),
+        filter.baseline.as_deref(),
+        filter.changed.as_deref(),
+    )?;
     let filtered = result.findings.len() != total_findings;
 
     if json {
@@ -498,119 +748,4 @@ fn cmd_config(root: &std::path::Path) -> io::Result<()> {
     println!("Disabled patterns: {:?}", config.disabled_patterns);
 
     Ok(())
-}
-
-fn cmd_license(action: LicenseAction) -> io::Result<()> {
-    let mut manager = LicenseManager::new();
-
-    match action {
-        LicenseAction::Status => {
-            let status = manager.status();
-            println!("Prune License");
-            println!("=============");
-            println!();
-            println!("{}", status.message());
-
-            if let LicenseStatus::Valid(license) | LicenseStatus::GracePeriod(license) = &status {
-                println!();
-                println!("Tier: {}", license.tier.display_name());
-                println!("Email: {}", license.email);
-                println!("Features: {}", license.features.join(", "));
-                if let Some(seats) = license.seats {
-                    println!("Seats: {}", seats);
-                }
-            }
-        }
-        LicenseAction::Activate { key, email } => match manager.activate(&key, &email) {
-            Ok(license) => {
-                println!("License activated successfully!");
-                println!();
-                println!("Tier: {}", license.tier.display_name());
-                println!("Features: {}", license.features.join(", "));
-                if license.expires_at.is_none() {
-                    println!("License: Perpetual (includes 1 year of updates)");
-                } else {
-                    println!("Valid for: {} days", license.days_remaining().unwrap_or(0));
-                }
-            }
-            Err(e) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, e.to_string()));
-            }
-        },
-        LicenseAction::Trial { email } => match manager.start_trial(&email) {
-            Ok(license) => {
-                println!("Trial started successfully!");
-                println!();
-                println!("You have 14 days to explore Prune.");
-                println!("Trial key: {}", license.key);
-                println!();
-                println!("Features included:");
-                for feature in &license.features {
-                    println!("  - {}", feature);
-                }
-                println!();
-                println!("Purchase at https://prunecode.ai/buy");
-            }
-            Err(e) => {
-                return Err(io::Error::other(e.to_string()));
-            }
-        },
-        LicenseAction::Generate { tier, customer } => {
-            let license_tier = match tier.to_lowercase().as_str() {
-                "solo" => LicenseTier::Solo,
-                "pro" => LicenseTier::Pro,
-                "team" => LicenseTier::Team,
-                "enterprise" | "ent" => LicenseTier::Enterprise,
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Invalid tier. Use: solo, pro, team, or enterprise",
-                    ));
-                }
-            };
-
-            let key = generate_license_key(license_tier, &customer);
-            println!("Generated License Key");
-            println!("======================");
-            println!();
-            println!("Tier: {}", license_tier.display_name());
-            println!("Customer: {}", customer);
-            println!();
-            println!("Key: {}", key);
-            println!();
-            println!("Activate with:");
-            println!("  prune license activate {} --email {}", key, customer);
-        }
-    }
-
-    Ok(())
-}
-
-fn generate_license_key(tier: LicenseTier, identifier: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let tier_code = match tier {
-        LicenseTier::Trial => "TRIAL",
-        LicenseTier::Solo => "SOLO",
-        LicenseTier::Pro => "PRO",
-        LicenseTier::Team => "TEAM",
-        LicenseTier::Enterprise => "ENT",
-    };
-
-    let mut hasher = DefaultHasher::new();
-    identifier.hash(&mut hasher);
-    chrono::Utc::now()
-        .timestamp_nanos_opt()
-        .unwrap_or(0)
-        .hash(&mut hasher);
-    let hash = hasher.finish();
-
-    format!(
-        "PRUNE-{}-{:06X}-{:06X}-{:06X}",
-        tier_code,
-        (hash >> 48) as u32 & 0xFFFFFF,
-        (hash >> 24) as u32 & 0xFFFFFF,
-        hash as u32 & 0xFFFFFF
-    )
 }

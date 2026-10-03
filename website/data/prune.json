@@ -1,0 +1,197 @@
+{
+  "name": "Prune",
+  "version": "0.2.0",
+  "license": "MIT",
+  "homepage": "https://prunecode.ai",
+  "docs": "https://prunecode.ai/docs",
+  "repository": "https://github.com/dlabadini/prune",
+  "issues": "https://github.com/dlabadini/prune/issues",
+  "summary": "Free, local-first structural linter for AI-written TypeScript and JavaScript. Finds dead exports, unreachable files, duplicate types, god files, import cycles and near-duplicate functions, and hands cleanup to coding agents as verifiable tasks.",
+  "install": [
+    {
+      "id": "curl",
+      "platforms": [
+        "macos",
+        "linux"
+      ],
+      "command": "curl -fsSL https://prunecode.ai/install.sh | bash",
+      "note": "Installs a prebuilt binary to ~/.prune/bin."
+    },
+    {
+      "id": "npm",
+      "platforms": [
+        "macos",
+        "linux"
+      ],
+      "command": "npm i -D prunecode",
+      "note": "Per-repo devDependency; run with npx prune."
+    },
+    {
+      "id": "cargo",
+      "platforms": [
+        "macos",
+        "linux",
+        "windows"
+      ],
+      "command": "cargo install prunecode",
+      "note": "Builds from source."
+    }
+  ],
+  "detectors": [
+    {
+      "id": "dead_exports",
+      "name": "Dead exports",
+      "tier": "essential",
+      "finds": "Exports and whole files that nothing reachable from an entry point uses, classified as used, test_only, same_file_only, unused or unreachable."
+    },
+    {
+      "id": "god_file",
+      "name": "God file",
+      "tier": "essential",
+      "finds": "Files whose behavior (functions, classes) outgrew one concept."
+    },
+    {
+      "id": "import_cycle",
+      "name": "Import cycle",
+      "tier": "essential",
+      "finds": "Runtime value import cycles; type-only cycles are reported separately at low severity."
+    },
+    {
+      "id": "interface_sprawl",
+      "name": "Interface sprawl",
+      "tier": "recommended",
+      "finds": "Types, interfaces and object validators that restate the same fields."
+    },
+    {
+      "id": "lexicon",
+      "name": "Lexicon",
+      "tier": "recommended",
+      "finds": "One shape under several names, or one name used for unrelated shapes."
+    },
+    {
+      "id": "redundant_logic",
+      "name": "Redundant logic",
+      "tier": "recommended",
+      "finds": "Near-duplicate functions that should be consolidated."
+    },
+    {
+      "id": "barrel_bloat",
+      "name": "Barrel bloat",
+      "tier": "recommended",
+      "finds": "Index files re-exporting too many modules."
+    },
+    {
+      "id": "over_abstraction",
+      "name": "Over-abstraction",
+      "tier": "emerging",
+      "finds": "Wrappers that only forward a call, and single-implementation interfaces."
+    }
+  ],
+  "mcp": {
+    "command": "prune",
+    "args": [
+      "mcp"
+    ],
+    "transport": "stdio",
+    "setup": {
+      "claude_code": "claude mcp add prune -- npx prune mcp",
+      "claude_code_binary": "claude mcp add prune -- prune mcp",
+      "mcp_json": {
+        "mcpServers": {
+          "prune": {
+            "command": "npx",
+            "args": [
+              "prune",
+              "mcp"
+            ]
+          }
+        }
+      }
+    },
+    "tools": [
+      {
+        "name": "tasks",
+        "description": "Prioritized cleanup tasks, each with files, the change, an optional autofix command, and a done-when check (prune verify <id>)."
+      },
+      {
+        "name": "scan",
+        "description": "Findings and score, most severe first. Filters: limit, min_severity, changed, use_baseline."
+      },
+      {
+        "name": "plan",
+        "description": "Markdown refactor plan for one finding."
+      },
+      {
+        "name": "compose_plan",
+        "description": "Structured compose/rename instructions for one finding."
+      },
+      {
+        "name": "verify",
+        "description": "Whether a finding is resolved after refactoring."
+      },
+      {
+        "name": "who_uses",
+        "description": "Usage class of an export and every file that uses it, through barrels, namespaces and Convex references."
+      },
+      {
+        "name": "safe_to_delete",
+        "description": "Whether deleting or un-exporting an export is safe, with reasons."
+      },
+      {
+        "name": "rename_impact",
+        "description": "Files and edit counts a rename touches. Writes nothing."
+      },
+      {
+        "name": "recent_files",
+        "description": "Files touched in recent git history."
+      }
+    ]
+  },
+  "commands": [
+    {
+      "command": "prune",
+      "does": "Interactive TUI."
+    },
+    {
+      "command": "prune scan",
+      "does": "Findings with a score. --json, --watch, --baseline [FILE], --changed [REF], --ci"
+    },
+    {
+      "command": "prune check [FILES...]",
+      "does": "Pre-commit gate over staged files; fails only on new findings at or above --fail-on (default high)."
+    },
+    {
+      "command": "prune tasks",
+      "does": "Prioritized task list for agents. --json, -n, --min-severity, --changed, --baseline, -o FILE"
+    },
+    {
+      "command": "prune baseline",
+      "does": "Record current findings in .prune-baseline.json so only new ones fail."
+    },
+    {
+      "command": "prune fix",
+      "does": "Safe autofix (unexport, delete unreachable files), dry run unless --apply; each fix reverted if --check fails."
+    },
+    {
+      "command": "prune rename FILE FROM TO",
+      "does": "Rename an export across importers, dry run unless --apply."
+    },
+    {
+      "command": "prune plan ID",
+      "does": "Markdown refactor plan for a finding."
+    },
+    {
+      "command": "prune verify ID",
+      "does": "Exit 0 once a finding is resolved."
+    },
+    {
+      "command": "prune init",
+      "does": "Write .prunerc and ignore .prune/."
+    },
+    {
+      "command": "prune mcp",
+      "does": "Serve MCP tools over stdio."
+    }
+  ],
+  "setup_runbook": "https://prunecode.ai/setup.md"
+}

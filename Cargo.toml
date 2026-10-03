@@ -1,11 +1,11 @@
 [package]
 name = "prunecode"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Detect structural and semantic anti-patterns in codebases"
+description = "Free, local-first structural linter for AI-written TypeScript: dead exports, god files, duplicate types, import cycles. CLI, pre-commit hook, and MCP server."
 license = "MIT"
 repository = "https://github.com/dlabadini/prune"
-keywords = ["linter", "code-analysis", "refactoring", "ai", "developer-tools"]
+keywords = ["linter", "typescript", "dead-code", "mcp", "pre-commit"]
 categories = ["development-tools", "command-line-utilities"]
 include = [
     "/src/**",

@@ -571,7 +571,7 @@ fn path_has_segment(path: &str, segment: &str) -> bool {
     path.split('/').any(|part| part == segment)
 }
 
-fn is_supported_extension(ext: &str) -> bool {
+pub fn is_supported_extension(ext: &str) -> bool {
     matches!(
         ext,
         "ts" | "tsx" | "js" | "jsx" | "mts" | "mjs" | "cts" | "cjs"

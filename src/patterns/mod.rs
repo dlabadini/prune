@@ -37,6 +37,17 @@ pub enum Severity {
 }
 
 impl Severity {
+    /// Parse `low`, `medium`, `high`, or `critical` (case-insensitive).
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.to_ascii_lowercase().as_str() {
+            "low" => Some(Severity::Low),
+            "medium" | "med" => Some(Severity::Medium),
+            "high" => Some(Severity::High),
+            "critical" => Some(Severity::Critical),
+            _ => None,
+        }
+    }
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Severity::Low => "low",

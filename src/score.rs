@@ -139,7 +139,20 @@ pub fn next_line(finding: &Finding) -> String {
     if finding.suggested_fix.trim().is_empty() {
         first_line(&finding.description)
     } else {
-        first_line(&finding.suggested_fix)
+        first_step(&finding.suggested_fix)
+    }
+}
+
+/// First line of a fix that says what to do: skips a heading such as "In `src/a.ts`:".
+fn first_step(text: &str) -> String {
+    let mut lines = text.lines().map(str::trim).filter(|line| !line.is_empty());
+    let first = lines.next().unwrap_or("");
+    match lines.next() {
+        Some(step) if first.ends_with(':') => {
+            let step = step.trim_start_matches(['-', '*', ' ']);
+            format!("{} {step}", first.trim_end_matches(':'))
+        }
+        _ => first.to_string(),
     }
 }
 

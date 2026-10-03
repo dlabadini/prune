@@ -1,261 +1,552 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Prune - Detect AI-Generated Code Debt</title>
-  <meta name="description" content="Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt.">
+  <meta charset="utf-8">
+  <script>
+    try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch {}
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Prune — the structural linter for AI-written code</title>
+  <meta name="description" content="Free, open-source, local-first linter for AI-written TypeScript. Prune finds dead exports, orphan files, duplicate types, god files and import cycles, runs in pre-commit, and hands cleanup to your agent over MCP.">
   <link rel="canonical" href="https://prunecode.ai/">
+  <link rel="alternate" type="text/markdown" href="/index.md">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#f3eee4">
 
-  <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://prunecode.ai/">
-  <meta property="og:title" content="Prune - Detect AI-Generated Code Debt">
-  <meta property="og:description" content="Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt.">
+  <meta property="og:title" content="Prune — your agent grows the code, Prune trims it">
+  <meta property="og:description" content="Free, local-first structural linter for AI-written TypeScript. Dead exports, duplicate types, god files, cycles. Pre-commit hook and MCP server.">
   <meta property="og:site_name" content="Prune">
+  <meta property="og:image" content="https://prunecode.ai/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Prune: a gardener marks dead branches on a low-poly tree while a small robot snips them.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://prunecode.ai/og.png">
+  <meta name="twitter:title" content="Prune — your agent grows the code, Prune trims it">
+  <meta name="twitter:description" content="Free, local-first structural linter for AI-written TypeScript. Pre-commit hook and MCP server.">
 
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Prune - Detect AI-Generated Code Debt">
-  <meta name="twitter:description" content="Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt.">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }
+  </script>
   <script type="application/ld+json">
-  [
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "Prune Dev",
-      "url": "https://prunecode.ai",
-      "email": "hello@prune.dev",
-      "sameAs": ["https://github.com/prunecode/prune"]
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Prune",
-      "url": "https://prunecode.ai",
-      "description": "Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt."
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Prune",
-      "url": "https://prunecode.ai",
-      "description": "Find structural anti-patterns in your TypeScript codebase.",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "macOS, Linux",
-      "offers": {
-        "@type": "AggregateOffer",
-        "lowPrice": "29",
-        "highPrice": "249",
-        "priceCurrency": "USD",
-        "offerCount": "3"
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://prunecode.ai/#org",
+        "name": "Prune",
+        "url": "https://prunecode.ai",
+        "logo": "https://prunecode.ai/favicon.svg",
+        "email": "hello@prune.dev",
+        "sameAs": ["https://github.com/dlabadini/prune"],
+        "contactPoint": [
+          { "@type": "ContactPoint", "contactType": "technical support", "url": "https://github.com/dlabadini/prune/issues", "email": "hello@prune.dev", "availableLanguage": "English" }
+        ]
       },
-      "featureList": [
-        "God file detection",
-        "Interface sprawl detection",
-        "Dead export detection",
-        "Redundant logic detection",
-        "Barrel bloat detection",
-        "Over-abstraction detection"
-      ]
-    }
-  ]
+      {
+        "@type": "WebSite",
+        "@id": "https://prunecode.ai/#website",
+        "name": "Prune",
+        "url": "https://prunecode.ai",
+        "description": "Free, open-source, local-first structural linter for AI-written TypeScript and JavaScript.",
+        "publisher": { "@id": "https://prunecode.ai/#org" },
+        "inLanguage": "en"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://prunecode.ai/#app",
+        "name": "Prune",
+        "alternateName": "prunecode",
+        "url": "https://prunecode.ai",
+        "image": "https://prunecode.ai/og.png",
+        "description": "Free, open-source, local-first structural linter for AI-written TypeScript and JavaScript. Finds dead exports, unreachable files, duplicate types, god files and import cycles; runs in pre-commit and as an MCP server for coding agents.",
+        "applicationCategory": "DeveloperApplication",
+        "applicationSubCategory": "Static analysis",
+        "operatingSystem": "macOS, Linux",
+        "softwareVersion": "0.2.0",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "downloadUrl": "https://github.com/dlabadini/prune/releases",
+        "installUrl": "https://prunecode.ai/install.sh",
+        "softwareHelp": { "@type": "CreativeWork", "url": "https://prunecode.ai/docs" },
+        "codeRepository": "https://github.com/dlabadini/prune",
+        "programmingLanguage": "Rust",
+        "author": { "@id": "https://prunecode.ai/#org" },
+        "featureList": ["Dead export and unreachable file detection", "Duplicate type detection", "God file detection", "Import cycle detection", "Pre-commit hook", "MCP server for coding agents", "Verified autofix"]
+      },
+      <!--FAQ_LD-->
+    ]
+  }
   </script>
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-container">
-      <a href="/" class="logo">prune</a>
-      <div class="nav-links">
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/prunecode/prune">GitHub</a>
-      </div>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Prune home">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M6 5.7a2.7 2.7 0 0 1 5.4 0v20.2L6 29z" fill="currentColor"/>
+          <path d="M13 4.2A1.2 1.2 0 0 1 14.2 3h2.4a9 9 0 0 1 0 18h-2.4A1.2 1.2 0 0 1 13 19.8z" fill="#5e9f4e"/>
+        </svg>
+        prune
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a class="hide-sm" href="#how">How it works</a>
+        <a class="hide-sm" href="/setup">Setup</a>
+        <a class="hide-sm" href="/docs">Docs</a>
+        <a class="gh" href="https://github.com/dlabadini/prune">GitHub</a>
+      </nav>
     </div>
-  </nav>
+  </header>
 
   <main>
-    <!-- Hero -->
     <section class="hero">
-      <h1>Your AI copilot writes code.<br>Prune keeps it clean.</h1>
-      <p class="hero-sub">Detect structural anti-patterns in TypeScript codebases.<br>Duplicated interfaces. God files. Dead exports. Found in seconds.</p>
-
-      <div class="install-box">
-        <code>curl -fsSL https://prunecode.ai/install.sh | sh</code>
-        <button class="copy-btn" onclick="copyInstall()">Copy</button>
-      </div>
-
-      <p class="install-alt">or <code>cargo install prunecode</code></p>
-    </section>
-
-    <!-- Problem -->
-    <section class="section">
-      <h2>The Problem</h2>
-      <p>AI coding assistants generate code fast. Too fast. They don't see your existing abstractions, so they create new ones. Every time.</p>
-      <div class="problem-grid">
-        <div class="problem-card">
-          <h3>Interface Sprawl</h3>
-          <p>20 variations of <code>UserData</code>, <code>UserInfo</code>, <code>UserDTO</code> across your codebase.</p>
-        </div>
-        <div class="problem-card">
-          <h3>God Files</h3>
-          <p><code>utils.ts</code> with 50 exports because it was convenient to add "just one more function."</p>
-        </div>
-        <div class="problem-card">
-          <h3>Dead Exports</h3>
-          <p>Symbols exported but never imported. Cluttering autocomplete. Confusing new devs.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Solution -->
-    <section class="section">
-      <h2>The Solution</h2>
-      <p>Prune scans your codebase and finds these patterns. Run it locally. No cloud. No config needed.</p>
-
-      <div class="terminal">
-        <div class="terminal-header">
-          <span class="terminal-dot red"></span>
-          <span class="terminal-dot yellow"></span>
-          <span class="terminal-dot green"></span>
-        </div>
-        <pre class="terminal-body">$ prune
-
-Scanning... 847 files in 3.2s
-
-Found 23 issues:
-
-<span class="high">[HIGH]</span> God File: src/utils/helpers.ts
-       47 exports, 1,200 lines
-
-<span class="high">[HIGH]</span> Interface Sprawl: UserData pattern
-       5 similar types across 4 files
-
-<span class="medium">[MED]</span>  Dead Export: formatCurrency
-       Exported but never imported
-
-Press 'p' for refactor plan, 'q' to quit</pre>
-      </div>
-    </section>
-
-    <!-- Patterns -->
-    <section class="section">
-      <h2>What Prune Detects</h2>
-      <div class="pattern-grid">
-        <div class="pattern-card">
-          <h3>God Files</h3>
-          <p>Files with too many exports or lines of code that should be split.</p>
-        </div>
-        <div class="pattern-card">
-          <h3>Interface Sprawl</h3>
-          <p>Duplicate or near-duplicate type definitions across your codebase.</p>
-        </div>
-        <div class="pattern-card">
-          <h3>Redundant Logic</h3>
-          <p>Functions with similar implementations that should be consolidated.</p>
-        </div>
-        <div class="pattern-card">
-          <h3>Barrel Bloat</h3>
-          <p>index.ts files re-exporting too many modules, hurting tree-shaking.</p>
-        </div>
-        <div class="pattern-card">
-          <h3>Dead Exports</h3>
-          <p>Exported symbols that are never imported anywhere.</p>
-        </div>
-        <div class="pattern-card">
-          <h3>Over-Abstraction</h3>
-          <p>Wrapper functions that just call another function with no added value.</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Pricing -->
-    <section class="section pricing-section">
-      <h2>Pricing</h2>
-      <p>Start with a 14-day trial. No credit card required.</p>
-
-      <div class="pricing-grid">
-        <div class="pricing-card">
-          <h3>Solo</h3>
-          <div class="price">$29</div>
-          <div class="price-period">one-time</div>
-          <ul>
-            <li>CLI tool</li>
-            <li>All 6 pattern detectors</li>
-            <li>Refactor plans</li>
-            <li>1 year of updates</li>
+      <div class="wrap">
+        <div>
+          <ul class="eyebrow" aria-label="Highlights">
+            <li>free &amp; MIT</li>
+            <li>local-first</li>
+            <li>pre-commit</li>
+            <li>MCP</li>
           </ul>
-          <a href="#" class="btn" data-product="solo">Buy Solo</a>
+          <h1>Your agent grows the code. Prune <span class="cut">trims</span> it.</h1>
+          <p class="lede">A structural linter for AI-written TypeScript. Prune finds the <strong>dead exports, orphan files, duplicate types and god files</strong> your agent leaves behind, then hands the cleanup back to it as tasks it can verify.</p>
+          <div class="install" data-install>
+            <div class="install-tabs" role="tablist" aria-label="Install method">
+              <button role="tab" aria-selected="true" data-cmd="Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks." data-prompt>ask your agent</button>
+              <button role="tab" aria-selected="false" data-cmd="curl -fsSL https://prunecode.ai/install.sh | bash">curl</button>
+              <button role="tab" aria-selected="false" data-cmd="npm i -D prunecode">npm</button>
+              <button role="tab" aria-selected="false" data-cmd="cargo install prunecode">cargo</button>
+            </div>
+            <div class="install-cmd">
+              <code class="is-prompt">Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.</code>
+              <button class="copy" type="button">copy</button>
+            </div>
+          </div>
+          <div class="hero-actions">
+            <a href="/setup">What your agent will do</a>
+            <a href="#how">How it works</a>
+            <a href="https://github.com/dlabadini/prune">Source</a>
+          </div>
         </div>
-
-        <div class="pricing-card featured">
-          <div class="featured-badge">Popular</div>
-          <h3>Pro</h3>
-          <div class="price">$99</div>
-          <div class="price-period">per year</div>
-          <ul>
-            <li>Everything in Solo</li>
-            <li>Watch mode</li>
-            <li>Desktop app (coming soon)</li>
-            <li>Priority support</li>
-          </ul>
-          <a href="#" class="btn btn-primary" data-product="pro">Buy Pro</a>
-        </div>
-
-        <div class="pricing-card">
-          <h3>Team</h3>
-          <div class="price">$249</div>
-          <div class="price-period">per year</div>
-          <ul>
-            <li>Everything in Pro</li>
-            <li>5 seats included</li>
-            <li>CI integration</li>
-            <li>Shared .prunerc config</li>
-          </ul>
-          <a href="#" class="btn" data-product="team">Buy Team</a>
+        <div class="garden" id="garden">
+          <div class="garden-fallback">prune · your codebase, trimmed</div>
+          <div class="garden-legend" aria-hidden="true">
+            <span style="--dot:#c9532a">marked by prune</span>
+            <span style="--dot:#9aa4b0">cut by your agent</span>
+          </div>
         </div>
       </div>
-
-      <p class="pricing-note">Need more seats or custom terms? <a href="mailto:hello@prune.dev">Contact us</a></p>
     </section>
 
-    <!-- CTA -->
-    <section class="section cta-section">
-      <h2>Try Prune in 30 seconds</h2>
-      <div class="install-box">
-        <code>curl -fsSL https://prunecode.ai/install.sh | sh && prune</code>
-        <button class="copy-btn" onclick="copyCTA()">Copy</button>
+    <section class="section" aria-labelledby="why-title">
+      <div class="wrap">
+        <p class="kicker">why prune</p>
+        <h2 id="why-title">Linters check each line. Agents make a mess across files.</h2>
+        <p class="section-lede">Every line an agent writes can pass lint and typecheck while the codebase quietly grows a second <code>User</code> type, a helper nobody calls, and a file nothing imports. Prune reads the whole module graph, so it sees those problems.</p>
+        <div class="contrast">
+          <div>
+            <h3>eslint, tsc, biome</h3>
+            <ul>
+              <li>Unused variables inside a file</li>
+              <li>Type errors and syntax</li>
+              <li>Style and formatting</li>
+              <li>One file at a time</li>
+            </ul>
+          </div>
+          <div>
+            <h3>prune</h3>
+            <ul>
+              <li>Exports nothing reachable imports, through barrels and namespaces</li>
+              <li>Files no entry point reaches</li>
+              <li>The same shape declared under five names</li>
+              <li>God files, runtime import cycles, near-duplicate functions</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="finds" aria-labelledby="finds-title">
+      <div class="wrap">
+        <p class="kicker">what it finds</p>
+        <h2 id="finds-title">Eight detectors, tuned against false positives.</h2>
+        <p class="section-lede">Each finding comes with the locations, why it matters, a refactor plan, and an id that stays stable across unrelated edits.</p>
+        <div class="grid">
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Dead exports</h3>
+            <p>Exports classified by reachability from your real entry points, frameworks included.</p>
+            <div class="eg">formatDate · unused</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Unreachable files</h3>
+            <p>Whole files no entry point, script, config or framework route loads.</p>
+            <div class="eg">src/legacy/orphan.ts</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>God files</h3>
+            <p>Files whose behavior outgrew one concept. Schemas and constant data count as declarations, not behavior.</p>
+            <div class="eg">utils.ts · 41 functions</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Import cycles</h3>
+            <p>Runtime value cycles, kept separate from harmless type-only cycles.</p>
+            <div class="eg">auth.ts → session.ts → auth.ts</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Interface sprawl</h3>
+            <p>Types, interfaces and <code>z.object</code> / <code>v.object</code> validators that restate the same fields.</p>
+            <div class="eg">User · UserDTO · UserInfo</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Lexicon</h3>
+            <p>One shape under many names, or one name used for unrelated shapes.</p>
+            <div class="eg">"draft" means 3 things</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Redundant logic</h3>
+            <p>Near-duplicate functions, matched structurally and with optional local embeddings.</p>
+            <div class="eg">getUserById ≈ fetchUser</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-emerging">emerging</span>
+            <h3>Barrels &amp; over-abstraction</h3>
+            <p>Index files re-exporting half the repo, and wrappers that only forward a call.</p>
+            <div class="eg">index.ts · 64 re-exports</div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="kicker">how it works</p>
+        <h2 id="how-title">Prune marks. Your agent cuts. Prune checks the cut.</h2>
+        <p class="section-lede">Prune doesn't rewrite your code behind your back. It finds the dead wood, writes a precise task, and verifies the result, so an agent can do the cleanup without guessing.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-head"><h3>Mark</h3></div>
+            <p>Prune indexes the module graph locally and walks it from every entry: <code>package.json</code>, configs, scripts, and Next.js and Convex routes.</p>
+            <div class="term"><pre><span class="p">$</span> prune scan
+<span class="b">Prune  74  A few gaps</span>    <span class="m">0.2.0</span>
+<span class="m">Scanned 412 files (38,120 lines)</span>
+
+<span class="r">essential</span> Dead Exports — 2 unused in format.ts
+<span class="r">essential</span> Unreachable file: orphan.ts
+<span class="y">recommended</span> Interface Sprawl — 3 types for User</pre></div>
+          </div>
+          <div class="step">
+            <div class="step-head"><h3>Hand off</h3></div>
+            <p><code>prune tasks</code> turns findings into a prioritized checklist. Each task says where, why, what to change, and how to prove it's done.</p>
+            <div class="term"><pre><span class="p">$</span> prune tasks -n 1
+- [ ] <span class="b">P1 · Dead Exports</span> — 2 unused in format.ts
+  - where: src/lib/format.ts:14
+  - change: prune 2 exports in src/lib/format.ts
+  - autofix: <span class="g">prune fix --apply --path-prefix src/lib/format.ts</span>
+  - done when: <span class="g">prune verify dead_exports-72b08f4a</span></pre></div>
+          </div>
+          <div class="step">
+            <div class="step-head"><h3>Verify</h3></div>
+            <p>The agent runs the task's check. Fixes Prune applies itself are reverted automatically if your typecheck fails.</p>
+            <div class="term"><pre><span class="p">$</span> prune verify dead_exports-72b08f4a
+<span class="g">✓</span>  Finding resolved
+<span class="p">$</span> prune fix --apply --check "bun run typecheck"
+<span class="g">applied</span>  unexport 3 symbols in src/api/client.ts
+<span class="r">reverted</span> delete src/jobs/sync.ts (check failed)</pre></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="gate-title">
+      <div class="wrap">
+        <p class="kicker">in the loop</p>
+        <h2 id="gate-title">Catch it at commit, before it's a cleanup ticket.</h2>
+        <p class="section-lede"><code>prune check</code> looks only at what you staged and the files that import it, so it's fast. With a committed baseline it fails only on findings that are new.</p>
+        <div class="demo">
+          <figure>
+            <div class="term">
+              <div class="term-bar"><i></i><i></i><i></i><span>pre-commit</span></div>
+<pre><span class="p">$</span> git commit -m "use helper directly"
+<span class="r">prune check: 1 new finding(s) at or above medium</span>
+<span class="m">(2 file(s) and their importers)</span>
+
+  <span class="y">medium</span> Dead Exports — 2 unused in lib.ts
+    src/lib.ts:1
+    Next: prune 2 exports in src/lib.ts
+    Plan: prune plan dead_exports-72b08f4a
+
+Fix them, or accept them with `prune baseline`
+and commit the baseline.
+<span class="m">Skip once with `git commit --no-verify`.</span></pre>
+            </div>
+            <figcaption>Your change stopped using <code>used()</code>, so the hook caught the export it left behind in a file you didn't touch.</figcaption>
+          </figure>
+          <figure>
+            <div class="term">
+              <div class="term-bar"><i></i><i></i><i></i><span>claude code</span></div>
+<pre><span class="u">› Run prune tasks -n 10 and work through them.</span>
+
+<span class="m">● prune.tasks(limit: 10)</span>
+  4 tasks · P1 ×2 · P2 ×1 · P4 ×1
+<span class="m">● prune.safe_to_delete(src/legacy/orphan.ts, *)</span>
+  safe_to_delete: <span class="g">true</span> · no importers, no tests
+<span class="m">● Bash(prune fix --apply --path-prefix src/legacy)</span>
+  <span class="g">applied</span> delete src/legacy/orphan.ts
+<span class="m">● Bash(prune verify dead_exports-6887f17e)</span>
+  <span class="g">✓</span> Finding resolved
+  Next: Interface Sprawl — 3 types for User …</pre>
+            </div>
+            <figcaption>Agents call Prune over MCP. They get the work list and can check it's safe before deleting anything.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="run" aria-labelledby="run-title">
+      <div class="wrap">
+        <p class="kicker">set it up</p>
+        <h2 id="run-title">You don't configure it. Your agent does.</h2>
+        <p class="section-lede">Paste one line into Claude Code, Cursor or any coding agent. It follows <a href="/setup">a runbook written for agents</a>: install with your package manager, record a baseline, add the check to the hook system you already use, connect MCP, and leave instructions for the next agent.</p>
+        <div class="agent-prompt">
+          <div class="agent-prompt-text">
+            <span class="agent-prompt-label">paste into your agent</span>
+            <p>Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.</p>
+          </div>
+          <button class="copy" type="button" data-copy="Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.">copy</button>
+        </div>
+        <ol class="agent-steps" aria-label="What the agent does">
+          <li><b>Installs</b> with your package manager, e.g. <code>pnpm add -D prunecode</code></li>
+          <li><b>Baselines</b> existing debt so nobody is blocked</li>
+          <li><b>Hooks</b> <code>prune check</code> into husky, lefthook or pre-commit</li>
+          <li><b>Connects</b> the MCP server to your client</li>
+          <li><b>Leaves notes</b> in AGENTS.md for the next agent</li>
+        </ol>
+        <p class="manual-label">What it sets up, if you'd rather check it or do it by hand:</p>
+        <div class="tabs" data-tabs>
+          <div class="tablist" role="tablist" aria-label="Integration">
+            <button role="tab" id="t-precommit" aria-controls="p-precommit" aria-selected="true">pre-commit</button>
+            <button role="tab" id="t-husky" aria-controls="p-husky" aria-selected="false" tabindex="-1">husky / lefthook</button>
+            <button role="tab" id="t-ci" aria-controls="p-ci" aria-selected="false" tabindex="-1">CI</button>
+            <button role="tab" id="t-mcp" aria-controls="p-mcp" aria-selected="false" tabindex="-1">MCP</button>
+            <button role="tab" id="t-agents" aria-controls="p-agents" aria-selected="false" tabindex="-1">AGENTS.md</button>
+          </div>
+          <div class="tabpanel" role="tabpanel" id="p-precommit" aria-labelledby="t-precommit">
+            <div>
+              <h3>pre-commit framework</h3>
+              <p>The <code>prune</code> hook uses the binary on your PATH. <code>prune-cargo</code> builds from source instead.</p>
+              <p>Record existing debt once with <code>prune baseline</code> and commit <code>.prune-baseline.json</code>.</p>
+            </div>
+            <div class="term snippet"><pre><span class="m"># .pre-commit-config.yaml</span>
+repos:
+  - repo: https://github.com/dlabadini/prune
+    rev: v0.2.0
+    hooks:
+      - id: prune
+        args: [--fail-on, medium]</pre></div>
+          </div>
+          <div class="tabpanel" role="tabpanel" id="p-husky" aria-labelledby="t-husky" hidden>
+            <div>
+              <h3>husky or lefthook</h3>
+              <p>Install it per repo with <code>npm i -D prunecode</code>, like any other lint tool. With no arguments it checks staged files. Pass a file list to check only those.</p>
+            </div>
+            <div>
+              <div class="term snippet"><pre><span class="m"># .husky/pre-commit</span>
+npx prune check</pre></div>
+              <div class="term snippet"><pre><span class="m"># lefthook.yml</span>
+pre-commit:
+  commands:
+    prune:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: npx prune check {staged_files}</pre></div>
+            </div>
+          </div>
+          <div class="tabpanel" role="tabpanel" id="p-ci" aria-labelledby="t-ci" hidden>
+            <div>
+              <h3>GitHub Actions</h3>
+              <p><code>--baseline --ci</code> exits 1 on any finding missing from the committed baseline. Add <code>--changed origin/main</code> to scope to the branch.</p>
+            </div>
+            <div class="term snippet"><pre><span class="m"># .github/workflows/prune.yml</span>
+name: prune
+on: pull_request
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl -fsSL https://prunecode.ai/install.sh | bash
+      - run: ~/.prune/bin/prune scan --baseline --ci</pre></div>
+          </div>
+          <div class="tabpanel" role="tabpanel" id="p-mcp" aria-labelledby="t-mcp" hidden>
+            <div>
+              <h3>MCP server</h3>
+              <p><code>prune mcp</code> serves <code>tasks</code>, <code>scan</code>, <code>plan</code>, <code>verify</code>, <code>who_uses</code>, <code>safe_to_delete</code>, <code>rename_impact</code> and more over stdio.</p>
+            </div>
+            <div>
+              <div class="term snippet"><pre><span class="m"># Claude Code</span>
+claude mcp add prune -- prune mcp</pre></div>
+              <div class="term snippet"><pre><span class="m">// .mcp.json · .cursor/mcp.json</span>
+{ "mcpServers": { "prune": { "command": "prune", "args": ["mcp"] } } }</pre></div>
+            </div>
+          </div>
+          <div class="tabpanel" role="tabpanel" id="p-agents" aria-labelledby="t-agents" hidden>
+            <div>
+              <h3>Agent instructions</h3>
+              <p>Two lines in <code>AGENTS.md</code> or <code>CLAUDE.md</code> keep agents from deleting something that's still used, and from leaving dead code behind.</p>
+            </div>
+            <div class="term snippet"><pre>Before deleting or renaming an export, ask Prune
+(`safe_to_delete`, `rename_impact`).
+After a refactor, run `prune check --fail-on medium`
+and fix what it reports.</pre></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="reach-title">
+      <div class="wrap">
+        <p class="kicker">reachability</p>
+        <h2 id="reach-title">Not just "unused". How far from used.</h2>
+        <p class="section-lede">Prune walks the graph twice, once from product entries and once from tests. It resolves imports through barrels, aliased re-exports, namespaces and Convex references, then gives every export exactly one class.</p>
+        <div class="reach">
+          <div style="--c: var(--leaf-2)">
+            <div class="bar"></div>
+            <span class="cls">used</span>
+            <p>Reached from product code, or consumed by a framework or tool.</p>
+            <span class="fix">keep</span>
+          </div>
+          <div style="--c: #b9c7a0">
+            <div class="bar"></div>
+            <span class="cls">test_only</span>
+            <p>Only tests touch it. The code path it covers is probably dead.</p>
+            <span class="fix">delete with its tests</span>
+          </div>
+          <div style="--c: #e0c27a">
+            <div class="bar"></div>
+            <span class="cls">same_file_only</span>
+            <p>Exported, but only its own file uses it.</p>
+            <span class="fix">prune fix · unexport</span>
+          </div>
+          <div style="--c: #e59a6c">
+            <div class="bar"></div>
+            <span class="cls">unused</span>
+            <p>Nothing reachable uses it.</p>
+            <span class="fix">delete it</span>
+          </div>
+          <div style="--c: var(--rust)">
+            <div class="bar"></div>
+            <span class="cls">unreachable</span>
+            <p>Its whole file is unreachable from any entry.</p>
+            <span class="fix">prune fix · delete file</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="trust-title">
+      <div class="wrap">
+        <div class="split">
+          <div>
+            <p class="kicker">local-first</p>
+            <h2 id="trust-title">Your code never leaves the shed.</h2>
+            <p class="section-lede">Prune is a single Rust binary. Parsing (Oxc), structural matching (ast-grep) and the index (SQLite) all run on your machine. Semantic matching uses a small local embedding model, and only once you've downloaded it.</p>
+            <ul>
+              <li>No account, no telemetry, no network calls during a scan</li>
+              <li>Next.js and Convex adapters find framework entries for you</li>
+              <li>Fenced boundaries let a package keep its own types on purpose</li>
+              <li>An accuracy harness with labeled fixtures guards precision in CI</li>
+            </ul>
+          </div>
+          <div class="stats">
+            <div class="stat"><b>0</b><span>bytes of code sent anywhere</span></div>
+            <div class="stat"><b>100%</b><span>precision &amp; recall on labeled fixtures</span></div>
+            <div class="stat"><b>1</b><span>binary: no runtime, no account, no config needed</span></div>
+            <div class="stat"><b>MIT</b><span>free for any use, forever</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="faq" aria-labelledby="faq-title">
+      <div class="wrap">
+        <p class="kicker">faq</p>
+        <h2 id="faq-title">Questions, answered.</h2>
+        <div class="faq">
+<!--FAQ-->
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta" aria-labelledby="cta-title">
+      <div class="wrap">
+        <p class="kicker">open source</p>
+        <h2 id="cta-title">Plant it in your repo.</h2>
+        <p class="section-lede">Install it, run <code>prune init</code>, and see what your agents left behind. If Prune gets something wrong, open an issue with the fixture. That's how the detectors get sharper.</p>
+        <div class="install" data-install>
+          <div class="install-tabs" role="tablist" aria-label="Install method">
+            <button role="tab" aria-selected="true" data-cmd="Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks." data-prompt>ask your agent</button>
+            <button role="tab" aria-selected="false" data-cmd="curl -fsSL https://prunecode.ai/install.sh | bash">curl</button>
+            <button role="tab" aria-selected="false" data-cmd="npm i -D prunecode">npm</button>
+            <button role="tab" aria-selected="false" data-cmd="cargo install prunecode">cargo</button>
+          </div>
+          <div class="install-cmd">
+            <code class="is-prompt">Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.</code>
+            <button class="copy" type="button">copy</button>
+          </div>
+        </div>
+        <div class="buttons">
+          <a class="btn btn-primary" href="https://github.com/dlabadini/prune">Star on GitHub</a>
+          <a class="btn" href="/docs">Read the docs</a>
+        </div>
       </div>
     </section>
   </main>
 
   <footer class="footer">
-    <div class="footer-container">
-      <div class="footer-left">
-        <span class="logo">prune</span>
-        <span class="footer-copy">&copy; 2024 Prune Dev</span>
-      </div>
-      <div class="footer-links">
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/prunecode/prune">GitHub</a>
-        <a href="mailto:hello@prune.dev">Contact</a>
+    <div class="wrap">
+      <span>prune · MIT licensed · © 2026</span>
+      <div class="footer-end">
+        <nav aria-label="Footer">
+          <a href="/docs">Docs</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="/privacy">Privacy</a>
+          <a href="https://github.com/dlabadini/prune">GitHub</a>
+          <a href="/llms.txt">llms.txt</a>
+        </nav>
+        <div class="theme-switch" role="group" aria-label="Color theme">
+          <button type="button" data-theme-choice="light" aria-pressed="true">light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">dark</button>
+        </div>
       </div>
     </div>
   </footer>
 
-  <script>
-    function copyInstall() {
-      navigator.clipboard.writeText('curl -fsSL https://prunecode.ai/install.sh | sh');
-      event.target.textContent = 'Copied!';
-      setTimeout(() => event.target.textContent = 'Copy', 2000);
-    }
-
-    function copyCTA() {
-      navigator.clipboard.writeText('curl -fsSL https://prunecode.ai/install.sh | sh && prune');
-      event.target.textContent = 'Copied!';
-      setTimeout(() => event.target.textContent = 'Copy', 2000);
-    }
+  <script src="/site.js" defer></script>
+  <script type="module">
+    import { mountGarden } from "/garden.js";
+    const params = new URLSearchParams(location.search);
+    if (params.has("solo")) document.body.classList.add("solo");
+    mountGarden(document.getElementById("garden"), {
+      capture: params.has("capture"),
+      startAt: Number(params.get("t") || 0),
+      paused: params.has("t"),
+    });
   </script>
   <script type="module">
     import { inject } from 'https://cdn.jsdelivr.net/npm/@vercel/analytics@latest/dist/script.js';

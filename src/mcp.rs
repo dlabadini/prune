@@ -1,7 +1,7 @@
 //! MCP server so an agent can ask Prune for findings, plans, and recent git edits.
 
 use crate::plan::RefactorPlan;
-use crate::Analyzer;
+use crate::{Analyzer, Severity};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ServiceExt};
 use schemars::JsonSchema;
@@ -19,6 +19,18 @@ struct ScanArgs {
     /// Project directory. Defaults to the directory the server was started in.
     #[serde(default)]
     path: Option<String>,
+    /// Return at most this many findings (most severe first). Defaults to 50.
+    #[serde(default)]
+    limit: Option<usize>,
+    /// Lowest severity to return: low, medium, high, critical. Defaults to low.
+    #[serde(default)]
+    min_severity: Option<String>,
+    /// Only findings in files changed since this git ref (e.g. "HEAD", "main") and files importing them.
+    #[serde(default)]
+    changed: Option<String>,
+    /// Skip findings recorded in .prune-baseline.json when it exists. Defaults to true.
+    #[serde(default)]
+    use_baseline: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -91,21 +103,52 @@ impl PruneServer {
         Self { root }
     }
 
-    #[tool(description = "Scan a project for structural anti-patterns and return JSON findings")]
+    #[tool(
+        description = "Scan a project for structural anti-patterns (dead exports, god files, duplicate types, import cycles, redundant logic) and return JSON findings, most severe first. Use `tasks` instead for an actionable work list"
+    )]
     fn scan(
         &self,
         Parameters(args): Parameters<ScanArgs>,
     ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
         let root = self.resolve(args.path.as_deref());
-        let mut analyzer = Analyzer::new(&root).map_err(tool_error)?;
-        let result = analyzer.scan().map_err(tool_error)?;
+        let (_analyzer, result, mut findings) = filtered_scan(&root, &args)?;
+        let total = findings.len();
+        findings.sort_by(|a, b| b.severity.cmp(&a.severity).then(a.id.cmp(&b.id)));
+        findings.truncate(args.limit.unwrap_or(DEFAULT_LIMIT));
         let payload = json!({
             "root": root,
             "version": result.score.version,
             "score": result.score,
             "files_scanned": result.files_scanned,
             "symbols_found": result.symbols_found,
-            "findings": result.findings,
+            "total_findings": total,
+            "returned": findings.len(),
+            "findings": findings,
+        });
+        Ok(rmcp::model::CallToolResult::success(vec![
+            rmcp::model::ContentBlock::json(payload).map_err(tool_error)?,
+        ]))
+    }
+
+    #[tool(
+        description = "Prioritized cleanup tasks for this repo. Each task has id, priority (1 = most urgent), files, why, the change to make, an optional `autofix` shell command, and `done_when` (`prune verify <id>`). Work them one at a time and call `verify` after each"
+    )]
+    fn tasks(
+        &self,
+        Parameters(args): Parameters<ScanArgs>,
+    ) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+        let root = self.resolve(args.path.as_deref());
+        let (_analyzer, _result, findings) = filtered_scan(&root, &args)?;
+        let min_severity = parse_severity(args.min_severity.as_deref())?;
+        let tasks = crate::tasks::build(
+            &findings,
+            min_severity,
+            Some(args.limit.unwrap_or(DEFAULT_LIMIT)),
+        );
+        let payload = json!({
+            "root": root,
+            "total_findings": findings.len(),
+            "tasks": tasks,
         });
         Ok(rmcp::model::CallToolResult::success(vec![
             rmcp::model::ContentBlock::json(payload).map_err(tool_error)?,
@@ -264,6 +307,42 @@ impl PruneServer {
     fn resolve(&self, path: Option<&str>) -> PathBuf {
         path.map(PathBuf::from).unwrap_or_else(|| self.root.clone())
     }
+}
+
+const DEFAULT_LIMIT: usize = 50;
+
+fn parse_severity(value: Option<&str>) -> Result<Severity, rmcp::ErrorData> {
+    match value {
+        None => Ok(Severity::Low),
+        Some(value) => Severity::parse(value).ok_or_else(|| {
+            tool_error(format!(
+                "unknown severity `{value}` (use low, medium, high, or critical)"
+            ))
+        }),
+    }
+}
+
+/// Scan, then apply the baseline, `changed` scope, and severity floor from `args`.
+fn filtered_scan(
+    root: &Path,
+    args: &ScanArgs,
+) -> Result<(Analyzer, crate::ScanResult, Vec<crate::Finding>), rmcp::ErrorData> {
+    let min_severity = parse_severity(args.min_severity.as_deref())?;
+    let mut analyzer = Analyzer::new(root).map_err(tool_error)?;
+    let mut result = analyzer.scan().map_err(tool_error)?;
+    let mut findings = std::mem::take(&mut result.findings);
+    let baseline_path = root.join(crate::baseline::DEFAULT_BASELINE);
+    if args.use_baseline.unwrap_or(true) && baseline_path.exists() {
+        let baseline = crate::baseline::Baseline::load(&baseline_path).map_err(tool_error)?;
+        findings = baseline.new_findings(findings);
+    }
+    if let Some(base) = &args.changed {
+        let changed = crate::baseline::changed_files(root, base).map_err(tool_error)?;
+        let scope = crate::baseline::with_dependents(analyzer.database(), &changed);
+        findings = crate::baseline::touching(findings, &scope);
+    }
+    findings.retain(|finding| finding.severity >= min_severity);
+    Ok((analyzer, result, findings))
 }
 
 fn tool_error(error: impl std::fmt::Display) -> rmcp::ErrorData {

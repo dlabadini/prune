@@ -13,13 +13,13 @@ pub mod entries;
 pub mod fix;
 pub mod gitinfo;
 pub mod graph;
-pub mod license;
 pub mod mcp;
 pub mod patterns;
 pub mod plan;
 pub mod score;
 pub mod suggest;
 pub mod structural;
+pub mod tasks;
 pub mod verify;
 pub mod watcher;
 pub mod workspace;
@@ -27,9 +27,6 @@ pub mod workspace;
 pub use analyzer::{Analyzer, AnalyzerError, ScanResult};
 pub use config::Config;
 pub use db::Database;
-pub use license::{
-    generate_license_key, License, LicenseError, LicenseManager, LicenseStatus, LicenseTier,
-};
 pub use compose::PruneAction;
 pub use patterns::{Finding, PatternDetector, PatternType, Severity, Tier};
 pub use plan::RefactorPlan;
