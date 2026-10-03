@@ -328,3 +328,38 @@ fn fix_deletes_import_connected_unreachable_files_together() {
     };
     assert!(prune::fix::run(dir.path(), analyzer.database(), &findings, &options).is_err());
 }
+
+/// Excluding files after a scan must drop them from every finding on the next scan.
+#[test]
+fn removed_files_leave_nothing_behind() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(root.join("package.json"), r#"{"name":"t","main":"main.ts"}"#).unwrap();
+    std::fs::create_dir_all(root.join("fixtures")).unwrap();
+    let shape = "{ id: string; subject: string; unread: boolean }";
+    std::fs::write(root.join("main.ts"), format!("export interface Thread {shape}\n")).unwrap();
+    for name in ["ThreadRow", "ThreadItem", "ThreadData"] {
+        std::fs::write(
+            root.join("fixtures").join(format!("{name}.ts")),
+            format!("export interface {name} {shape}\nexport function forward(value) {{ return other(value); }}\n"),
+        )
+        .unwrap();
+    }
+
+    let first = Analyzer::new(root).unwrap().scan().unwrap().findings;
+    assert!(
+        first
+            .iter()
+            .any(|finding| finding.locations.iter().any(|location| location.file.starts_with("fixtures/"))),
+        "expected fixtures in findings before excluding them: {first:#?}"
+    );
+
+    std::fs::write(root.join(".prunerc"), "exclude = [\"fixtures/**\"]\n").unwrap();
+    let second = Analyzer::new(root).unwrap().scan().unwrap().findings;
+    for finding in &second {
+        assert!(!finding.locations.is_empty(), "finding without locations: {finding:#?}");
+        for location in &finding.locations {
+            assert!(!location.file.starts_with("fixtures/"), "stale: {finding:#?}");
+        }
+    }
+}

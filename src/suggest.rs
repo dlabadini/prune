@@ -32,6 +32,11 @@ const RULES: &[Rule] = &[
         matches: |path| path.contains("/_generated/") || path.starts_with("_generated/"),
     },
     Rule {
+        glob: "**/fixtures/**",
+        reason: "test fixtures are sample code, often broken on purpose",
+        matches: |path| path.starts_with("fixtures/") || path.contains("/fixtures/"),
+    },
+    Rule {
         glob: "**/*.test.ts",
         reason: "test files are often allowed to be large or redundant",
         matches: |path| path.ends_with(".test.ts"),

@@ -56,6 +56,24 @@ pub fn analyze(source: &str, extension: &str) -> Vec<StructuralHit> {
             continue;
         };
         for matched in root.root().find_all(pattern) {
+            // Only a pure pass-through is a wrapper: it forwards exactly its own parameters, in
+            // order. A function that adds defaults, constants, or composes calls does real work.
+            let env = matched.get_env();
+            let params: Vec<String> = env
+                .get_multiple_matches("PARAMS")
+                .iter()
+                .filter(|node| node.is_named())
+                .map(|node| param_name(&node.text()))
+                .collect();
+            let args: Vec<String> = env
+                .get_multiple_matches("ARGS")
+                .iter()
+                .filter(|node| node.is_named())
+                .map(|node| node.text().trim().to_string())
+                .collect();
+            if params != args {
+                continue;
+            }
             let name = matched
                 .get_env()
                 .get_match("NAME")
@@ -81,6 +99,12 @@ pub fn analyze(source: &str, extension: &str) -> Vec<StructuralHit> {
     let mut seen = std::collections::HashSet::new();
     hits.retain(|hit| seen.insert((hit.kind, hit.name.clone(), hit.line)));
     hits
+}
+
+/// The bound name of a parameter: `d: Date` → `d`, `opts = {}` → `opts`, `...rest` stays `...rest`.
+fn param_name(text: &str) -> String {
+    let end = text.find([':', '=', '?']).unwrap_or(text.len());
+    text[..end].trim().to_string()
 }
 
 #[cfg(test)]
@@ -121,5 +145,23 @@ function local(x: number) { return helper(x); }
                 .count();
             assert_eq!(count, 1, "{name}: {hits:?}");
         }
+    }
+
+    #[test]
+    fn functions_that_add_work_are_not_wrappers() {
+        let source = r#"
+const read = (...parts) => fs.readFileSync(path.join(__dirname, ...parts), "utf8");
+function clay(color, extra = {}) { return make({ color, roughness: 0.8, ...extra }); }
+function wants(req) { return req.accepts(["text/html", "text/markdown"]); }
+function swapped(a, b) { return other(b, a); }
+function forward(a, b) { return other(a, b); }
+const spread = (...args) => other(...args);
+"#;
+        let wrappers: Vec<_> = analyze(source, "js")
+            .into_iter()
+            .filter(|hit| hit.kind == "wrapper")
+            .map(|hit| hit.name)
+            .collect();
+        assert_eq!(wrappers, ["forward", "spread"], "{wrappers:?}");
     }
 }

@@ -129,8 +129,9 @@ pub fn discover(
     let paths = Paths::new(graph);
     let mut plan = EntryPlan::default();
 
-    discover_packages(root, config, graph, &paths, &mut plan);
-    discover_tool_references(root, &paths, &mut plan);
+    let package_dirs = discover_packages(root, config, graph, &paths, &mut plan);
+    discover_tool_references(root, &package_dirs, &paths, &mut plan);
+    discover_html(root, &package_dirs, graph, &paths, &mut plan);
     discover_config_files(config, graph, &mut plan);
     if config.frameworks.next.enabled {
         discover_next(root, config, graph, &paths, &mut plan);
@@ -187,13 +188,16 @@ fn discover_config_files(config: &Config, graph: &ModuleGraph, plan: &mut EntryP
     }
 }
 
+/// Reads every `package.json` (except under node_modules) and returns the package directories,
+/// repo-relative (`""` for the root).
 fn discover_packages(
     root: &Path,
     config: &Config,
     graph: &ModuleGraph,
     paths: &Paths<'_>,
     plan: &mut EntryPlan,
-) {
+) -> Vec<String> {
+    let mut package_dirs = vec![String::new()];
     let walker = ignore::WalkBuilder::new(root)
         .hidden(true)
         .git_ignore(true)
@@ -215,6 +219,9 @@ fn discover_packages(
             .and_then(|parent| parent.strip_prefix(root).ok())
             .map(|rel| rel.to_string_lossy().replace('\\', "/"))
             .unwrap_or_default();
+        if !package_dirs.contains(&dir) {
+            package_dirs.push(dir.clone());
+        }
         let private = manifest
             .get("private")
             .and_then(|value| value.as_bool())
@@ -255,7 +262,7 @@ fn discover_packages(
                         resolve_function_string_root(&token, graph, &convex_dirs_for(root, &config.frameworks.convex), plan);
                         continue;
                     }
-                    if looks_like_path(&token) {
+                    if looks_like_path(&token) || looks_like_file(&token) {
                         if let Some(id) = paths.resolve_module(&join_relative(&dir, &token)) {
                             plan.entries.push((id, "package script".into()));
                             plan.root_files.push((id, "package script".into()));
@@ -265,11 +272,19 @@ fn discover_packages(
             }
         }
     }
+    package_dirs
 }
 
-/// Paths named in root-level tool configs (`bunfig.toml` preloads, `vercel.json`, CI yaml).
-fn discover_tool_references(root: &Path, paths: &Paths<'_>, plan: &mut EntryPlan) {
-    let Ok(dir) = std::fs::read_dir(root) else {
+/// Paths named in tool configs (`bunfig.toml` preloads, `vercel.json`, CI yaml) at the root and
+/// next to every `package.json`. Paths resolve relative to the config's directory.
+fn discover_tool_references(root: &Path, package_dirs: &[String], paths: &Paths<'_>, plan: &mut EntryPlan) {
+    for package_dir in package_dirs {
+        discover_tool_references_in(root, package_dir, paths, plan);
+    }
+}
+
+fn discover_tool_references_in(root: &Path, base: &str, paths: &Paths<'_>, plan: &mut EntryPlan) {
+    let Ok(dir) = std::fs::read_dir(root.join(base)) else {
         return;
     };
     for entry in dir.flatten() {
@@ -293,9 +308,13 @@ fn discover_tool_references(root: &Path, paths: &Paths<'_>, plan: &mut EntryPlan
         for token in text.split(|ch: char| {
             ch.is_whitespace() || matches!(ch, '"' | '\'' | ',' | '[' | ']' | '=' | '`' | '(' | ')')
         }) {
-            if looks_like_path(token) {
-                if let Some(id) = paths.resolve_module(&join_relative("", token)) {
-                    plan.entries.push((id, format!("referenced by {name}")));
+            if looks_like_path(token) || looks_like_file(token) {
+                if let Some(id) = paths.resolve_module(&join_relative(base, token)) {
+                    // The tool that loads the file consumes its exports (e.g. a Vercel function's
+                    // default export), so they count as used.
+                    let reason = format!("referenced by {}", join_relative(base, &name));
+                    plan.entries.push((id, reason.clone()));
+                    plan.root_files.push((id, reason));
                 }
             }
         }
@@ -344,6 +363,151 @@ fn script_tokens(command: &str) -> Vec<String> {
         })
         .filter(|token| !token.is_empty() && !token.starts_with('-'))
         .collect()
+}
+
+/// A bare file name such as `server.js`; only counts once it resolves to an indexed file.
+fn looks_like_file(token: &str) -> bool {
+    let ext = token.rsplit('.').next().unwrap_or("");
+    token.contains('.')
+        && !token.contains(['/', ':', '*', '$', '{'])
+        && SOURCE_EXTENSIONS.contains(&ext)
+}
+
+/// Scripts an HTML page loads: `<script src>` and the imports of inline module scripts.
+/// Their files are entries and their exports count as used, since the page consumes them.
+fn discover_html(
+    root: &Path,
+    package_dirs: &[String],
+    graph: &ModuleGraph,
+    paths: &Paths<'_>,
+    plan: &mut EntryPlan,
+) {
+    let walker = ignore::WalkBuilder::new(root)
+        .hidden(true)
+        .git_ignore(true)
+        .filter_entry(|entry| entry.file_name() != "node_modules")
+        .build();
+    for entry in walker.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("html") || !path.is_file() {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        if text.len() > 1024 * 1024 {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(root)
+            .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        let html_dir = parent_dir(&rel).to_string();
+        let package_dir = package_dirs
+            .iter()
+            .filter(|dir| dir.is_empty() || html_dir == **dir || html_dir.starts_with(&format!("{dir}/")))
+            .max_by_key(|dir| dir.len())
+            .cloned()
+            .unwrap_or_default();
+        for spec in html_script_specs(&text) {
+            for id in resolve_html_spec(&spec, &html_dir, &package_dir, graph, paths) {
+                plan.entries.push((id, format!("loaded by {rel}")));
+                plan.root_files.push((id, format!("loaded by {rel}")));
+            }
+        }
+    }
+}
+
+/// Module specifiers in `<script src="…">` and in `import … from "…"` / `import("…")` inside
+/// inline scripts.
+fn html_script_specs(html: &str) -> Vec<String> {
+    let mut specs = Vec::new();
+    let lower = html.to_ascii_lowercase();
+    let mut cursor = 0;
+    while let Some(start) = lower[cursor..].find("<script") {
+        let tag_start = cursor + start;
+        let Some(tag_len) = lower[tag_start..].find('>') else {
+            break;
+        };
+        let tag = &html[tag_start..tag_start + tag_len];
+        if let Some(src) = attribute(tag, "src") {
+            specs.push(src);
+        }
+        let body_start = tag_start + tag_len + 1;
+        let body_end = lower[body_start..]
+            .find("</script")
+            .map(|end| body_start + end)
+            .unwrap_or(html.len());
+        let body = &html[body_start..body_end];
+        for marker in ["from ", "import(", "import "] {
+            let mut at = 0;
+            while let Some(found) = body[at..].find(marker) {
+                let rest = body[at + found + marker.len()..].trim_start();
+                if let Some(quote) = rest.chars().next().filter(|ch| matches!(ch, '"' | '\'' | '`')) {
+                    if let Some(end) = rest[1..].find(quote) {
+                        specs.push(rest[1..1 + end].to_string());
+                    }
+                }
+                at += found + marker.len();
+            }
+        }
+        cursor = body_end;
+    }
+    specs.sort();
+    specs.dedup();
+    specs
+}
+
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let lower = tag.to_ascii_lowercase();
+    let mut at = 0;
+    while let Some(found) = lower[at..].find(name) {
+        let index = at + found;
+        let preceded = index == 0 || lower.as_bytes()[index - 1].is_ascii_whitespace();
+        let rest = tag[index + name.len()..].trim_start();
+        if preceded {
+            if let Some(rest) = rest.strip_prefix('=') {
+                let rest = rest.trim_start();
+                let quote = rest.chars().next()?;
+                if matches!(quote, '"' | '\'') {
+                    return rest[1..].find(quote).map(|end| rest[1..1 + end].to_string());
+                }
+            }
+        }
+        at = index + name.len();
+    }
+    None
+}
+
+/// `/x.js` is web-absolute: any file under the page's package whose path ends with it (static
+/// roots such as `public/` vary by server). Relative paths resolve from the page. URLs and bare
+/// package names are skipped.
+fn resolve_html_spec(
+    spec: &str,
+    html_dir: &str,
+    package_dir: &str,
+    graph: &ModuleGraph,
+    paths: &Paths<'_>,
+) -> Vec<i64> {
+    let spec = spec.split(['?', '#']).next().unwrap_or("");
+    if spec.is_empty() || spec.contains("://") || spec.starts_with("//") || spec.starts_with("data:") {
+        return Vec::new();
+    }
+    if let Some(absolute) = spec.strip_prefix('/') {
+        let prefix = if package_dir.is_empty() {
+            String::new()
+        } else {
+            format!("{package_dir}/")
+        };
+        return source_files(graph)
+            .filter(|(_, path)| path.starts_with(&prefix) && (path.ends_with(&format!("/{absolute}")) || *path == absolute))
+            .map(|(id, _)| id)
+            .collect();
+    }
+    if spec.starts_with('.') || looks_like_file(spec) {
+        return paths.resolve_module(&join_relative(html_dir, spec)).into_iter().collect();
+    }
+    Vec::new()
 }
 
 fn looks_like_path(token: &str) -> bool {
@@ -621,6 +785,8 @@ mod tests {
 
     #[test]
     fn script_tokens_find_paths_and_function_names() {
+        let tokens = script_tokens("node server.js");
+        assert!(tokens.iter().any(|token| looks_like_file(token)));
         let tokens = script_tokens("bun scripts/dev-signin.ts && bunx convex run comms/doctor:run --prod");
         assert!(tokens.contains(&"scripts/dev-signin.ts".to_string()));
         assert!(tokens.contains(&"comms/doctor:run".to_string()));
@@ -631,5 +797,23 @@ mod tests {
     fn wildcard_exports() {
         assert!(wildcard_match("packages/ui/src/*.tsx", "packages/ui/src/button.tsx"));
         assert!(!wildcard_match("packages/ui/src/*.tsx", "packages/ui/lib/button.tsx"));
+    }
+
+    #[test]
+    fn html_pages_name_the_scripts_they_load() {
+        let html = r#"<script src="/site.js" defer></script>
+<script type="importmap">{ "imports": { "three": "https://cdn.example/three.js" } }</script>
+<script type="module">
+  import { mountGarden } from "/garden.js";
+  const lazy = await import("./lazy.js");
+  import { inject } from 'https://cdn.example/analytics.js';
+</script>"#;
+        let specs = html_script_specs(html);
+        assert!(specs.contains(&"/site.js".to_string()), "{specs:?}");
+        assert!(specs.contains(&"/garden.js".to_string()), "{specs:?}");
+        assert!(specs.contains(&"./lazy.js".to_string()), "{specs:?}");
+        assert!(!looks_like_file("three"));
+        assert!(looks_like_file("server.js"));
+        assert!(!looks_like_file("comms/doctor:run"));
     }
 }

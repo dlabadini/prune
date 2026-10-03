@@ -88,6 +88,12 @@ fn reported(metric: &str, findings: &[Finding]) -> BTreeSet<String> {
                     }
                 }
             }
+            ("over_abstraction", PatternType::OverAbstraction) => {
+                let name = finding.title.rsplit(": ").next().unwrap_or("");
+                for location in &finding.locations {
+                    keys.insert(format!("{}::{name}", location.file));
+                }
+            }
             ("lexicon_glossary", PatternType::Lexicon) => {
                 for concept in &finding.related_concepts {
                     if concept.starts_with("glossary:") {
@@ -150,7 +156,7 @@ impl Score {
 fn accuracy_on_labeled_fixtures() {
     let mut totals: BTreeMap<String, Score> = BTreeMap::new();
     let mut misses: Vec<String> = Vec::new();
-    for fixture in ["reachability", "shapes", "godfile"] {
+    for fixture in ["reachability", "shapes", "godfile", "static_site"] {
         let (findings, labels) = scan(fixture);
         for (metric, label) in &labels {
             let got: BTreeSet<String> = reported(metric, &findings)

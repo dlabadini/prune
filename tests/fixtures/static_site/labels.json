@@ -1,0 +1,24 @@
+{
+  "dead_exports": {
+    "positive": [
+      "site/public/orphan.js::*",
+      "site/public/orphan.js::leftover",
+      "site/lib/util.js::unusedUtil",
+      "site/lib/util.js::forward"
+    ],
+    "negative": [
+      "site/server.js::*",
+      "site/api.js::*",
+      "site/api.js::default",
+      "site/public/app.js::*",
+      "site/public/widget.js::*",
+      "site/public/widget.js::mount",
+      "site/lib/util.js::used",
+      "site/lib/util.js::withDefaults"
+    ]
+  },
+  "over_abstraction": {
+    "positive": ["site/lib/util.js::forward"],
+    "negative": ["site/server.js::read", "site/server.js::wants", "site/lib/util.js::withDefaults"]
+  }
+}

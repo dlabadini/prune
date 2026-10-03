@@ -88,6 +88,18 @@ impl SymbolKind {
 /// Bump when the parser or schema changes what is stored; the index is rebuilt.
 pub const INDEX_VERSION: i64 = 4;
 
+/// What the index on disk was built by: the schema version and the Prune release. Detection
+/// rules change between releases, so an upgrade rebuilds the cache instead of reusing notes
+/// computed by older rules.
+fn index_stamp() -> i64 {
+    let mut hash: u32 = 0x811c9dc5;
+    for byte in format!("{INDEX_VERSION}:{}", env!("CARGO_PKG_VERSION")).bytes() {
+        hash ^= byte as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    (hash & 0x7fff_ffff) as i64
+}
+
 /// Whether a file is product code or only read for references (tests).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -205,7 +217,8 @@ impl Database {
 
         ensure_sqlite_vec();
         let conn = Connection::open(path)?;
-        // Enable foreign keys - must be done before any operations
+        // Foreign keys stay off: imports may point at files indexed later. Deletes clean up
+        // dependent rows explicitly (see `delete_file`).
         conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
         let db = Self {
             conn,
@@ -227,7 +240,7 @@ impl Database {
         let version: i64 = self
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version != INDEX_VERSION {
+        if version != index_stamp() {
             // The index is a cache: rebuild it when its shape changes. Embeddings are keyed by
             // content hash and survive.
             self.conn.execute_batch(
@@ -364,7 +377,7 @@ impl Database {
             "#,
         )?;
         self.conn
-            .execute_batch(&format!("PRAGMA user_version = {INDEX_VERSION};"))?;
+            .execute_batch(&format!("PRAGMA user_version = {};", index_stamp()))?;
         self.ensure_vector_table()?;
         Ok(())
     }
@@ -459,8 +472,23 @@ impl Database {
 
     /// Delete file and all related data
     pub fn delete_file(&self, path: &str) -> Result<(), DbError> {
+        let id = match self.conn.query_row(
+            "SELECT id FROM files WHERE path = ?1",
+            params![path],
+            |row| row.get::<_, i64>(0),
+        ) {
+            Ok(id) => id,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(()),
+            Err(error) => return Err(error.into()),
+        };
+        // Foreign keys are off, so ON DELETE CASCADE never fires: remove dependents by hand.
+        self.clear_file_symbols(id)?;
+        self.conn.execute(
+            "UPDATE imports SET target_file_id = NULL WHERE target_file_id = ?1",
+            params![id],
+        )?;
         self.conn
-            .execute("DELETE FROM files WHERE path = ?1", params![path])?;
+            .execute("DELETE FROM files WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -1206,6 +1234,30 @@ mod tests {
         let db = Database::open(&db_path).unwrap();
         let stats = db.get_stats().unwrap();
         assert_eq!(stats.file_count, 0);
+    }
+
+    #[test]
+    fn deleting_a_file_removes_its_rows() {
+        let dir = tempdir().unwrap();
+        let db = Database::open(&dir.path().join("t.db")).unwrap();
+        let file = db.upsert_file("gone.ts", "h", 3).unwrap();
+        let symbol = db
+            .insert_symbol(file, "Thread", SymbolKind::Interface, 1, 1, true, false, "interface Thread {}")
+            .unwrap();
+        db.insert_structural_note(file, "wrapper", "forward", 2, "other").unwrap();
+        db.insert_symbol_tag(symbol, "shape").unwrap();
+
+        db.delete_file("gone.ts").unwrap();
+
+        let orphans: i64 = db
+            .conn
+            .query_row(
+                "SELECT (SELECT count(*) FROM symbols) + (SELECT count(*) FROM structural_notes)",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(orphans, 0);
     }
 
     #[test]
