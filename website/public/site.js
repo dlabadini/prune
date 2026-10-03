@@ -4,8 +4,8 @@ async function copyText(button, text) {
   try {
     await navigator.clipboard.writeText(text);
     const label = button.textContent;
-    button.textContent = "copied";
-    setTimeout(() => (button.textContent = label), 1600);
+    button.textContent = button.dataset.copied || "copied";
+    setTimeout(() => (button.textContent = label), 2000);
   } catch {
     // Clipboard unavailable (insecure context or denied): leave the text selectable.
   }
@@ -105,7 +105,7 @@ for (const explorer of document.querySelectorAll("[data-explorer]")) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const DURATION = 7000;
   let index = 0;
-  let auto = !reduce;
+  let auto = !reduce && explorer.dataset.autoplay !== "false";
   let started = performance.now();
   let visible = false;
 
