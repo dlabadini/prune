@@ -175,154 +175,11 @@
       </div>
     </section>
 
-    <section class="section" id="finds" aria-labelledby="finds-title">
-      <div class="wrap">
-        <p class="kicker">what it finds</p>
-        <h2 id="finds-title">Eight detectors, tuned against false positives.</h2>
-        <p class="section-lede">Each finding comes with the locations, why it matters, a refactor plan, and an id that stays stable across unrelated edits.</p>
-        <div class="grid">
-          <article class="card">
-            <span class="tier tier-essential">essential</span>
-            <h3>Dead exports</h3>
-            <p>Exports classified by reachability from your real entry points, frameworks included.</p>
-            <div class="eg">formatDate · unused</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-essential">essential</span>
-            <h3>Unreachable files</h3>
-            <p>Whole files no entry point, script, config or framework route loads.</p>
-            <div class="eg">src/legacy/orphan.ts</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-essential">essential</span>
-            <h3>God files</h3>
-            <p>Files whose behavior outgrew one concept. Schemas and constant data count as declarations, not behavior.</p>
-            <div class="eg">utils.ts · 41 functions</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-essential">essential</span>
-            <h3>Import cycles</h3>
-            <p>Runtime value cycles, kept separate from harmless type-only cycles.</p>
-            <div class="eg">auth.ts → session.ts → auth.ts</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-recommended">recommended</span>
-            <h3>Interface sprawl</h3>
-            <p>Types, interfaces and <code>z.object</code> / <code>v.object</code> validators that restate the same fields.</p>
-            <div class="eg">User · UserDTO · UserInfo</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-recommended">recommended</span>
-            <h3>Lexicon</h3>
-            <p>One shape under many names, or one name used for unrelated shapes.</p>
-            <div class="eg">"draft" means 3 things</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-recommended">recommended</span>
-            <h3>Redundant logic</h3>
-            <p>Near-duplicate functions, matched structurally and with optional local embeddings.</p>
-            <div class="eg">getUserById ≈ fetchUser</div>
-          </article>
-          <article class="card">
-            <span class="tier tier-emerging">emerging</span>
-            <h3>Barrels &amp; over-abstraction</h3>
-            <p>Index files re-exporting half the repo, and wrappers that only forward a call.</p>
-            <div class="eg">index.ts · 64 re-exports</div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="how" aria-labelledby="how-title">
-      <div class="wrap">
-        <p class="kicker">how it works</p>
-        <h2 id="how-title">Prune marks. Your agent cuts. Prune checks the cut.</h2>
-        <p class="section-lede">Prune doesn't rewrite your code behind your back. It finds the dead wood, writes a precise task, and verifies the result, so an agent can do the cleanup without guessing.</p>
-        <div class="steps">
-          <div class="step">
-            <div class="step-head"><h3>Mark</h3></div>
-            <p>Prune indexes the module graph locally and walks it from every entry: <code>package.json</code>, configs, scripts, and Next.js and Convex routes.</p>
-            <div class="term"><pre><span class="p">$</span> prune scan
-<span class="b">Prune  74  A few gaps</span>    <span class="m">0.2.0</span>
-<span class="m">Scanned 412 files (38,120 lines)</span>
-
-<span class="r">essential</span> Dead Exports — 2 unused in format.ts
-<span class="r">essential</span> Unreachable file: orphan.ts
-<span class="y">recommended</span> Interface Sprawl — 3 types for User</pre></div>
-          </div>
-          <div class="step">
-            <div class="step-head"><h3>Hand off</h3></div>
-            <p><code>prune tasks</code> turns findings into a prioritized checklist. Each task says where, why, what to change, and how to prove it's done.</p>
-            <div class="term"><pre><span class="p">$</span> prune tasks -n 1
-- [ ] <span class="b">P1 · Dead Exports</span> — 2 unused in format.ts
-  - where: src/lib/format.ts:14
-  - change: prune 2 exports in src/lib/format.ts
-  - autofix: <span class="g">prune fix --apply --path-prefix src/lib/format.ts</span>
-  - done when: <span class="g">prune verify dead_exports-72b08f4a</span></pre></div>
-          </div>
-          <div class="step">
-            <div class="step-head"><h3>Verify</h3></div>
-            <p>The agent runs the task's check. Fixes Prune applies itself are reverted automatically if your typecheck fails.</p>
-            <div class="term"><pre><span class="p">$</span> prune verify dead_exports-72b08f4a
-<span class="g">✓</span>  Finding resolved
-<span class="p">$</span> prune fix --apply --check "bun run typecheck"
-<span class="g">applied</span>  unexport 3 symbols in src/api/client.ts
-<span class="r">reverted</span> delete src/jobs/sync.ts (check failed)</pre></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" aria-labelledby="gate-title">
-      <div class="wrap">
-        <p class="kicker">in the loop</p>
-        <h2 id="gate-title">Catch it at commit, before it's a cleanup ticket.</h2>
-        <p class="section-lede"><code>prune check</code> looks only at what you staged and the files that import it, so it's fast. With a committed baseline it fails only on findings that are new.</p>
-        <div class="demo">
-          <figure>
-            <div class="term">
-              <div class="term-bar"><i></i><i></i><i></i><span>pre-commit</span></div>
-<pre><span class="p">$</span> git commit -m "use helper directly"
-<span class="r">prune check: 1 new finding(s) at or above medium</span>
-<span class="m">(2 file(s) and their importers)</span>
-
-  <span class="y">medium</span> Dead Exports — 2 unused in lib.ts
-    src/lib.ts:1
-    Next: prune 2 exports in src/lib.ts
-    Plan: prune plan dead_exports-72b08f4a
-
-Fix them, or accept them with `prune baseline`
-and commit the baseline.
-<span class="m">Skip once with `git commit --no-verify`.</span></pre>
-            </div>
-            <figcaption>Your change stopped using <code>used()</code>, so the hook caught the export it left behind in a file you didn't touch.</figcaption>
-          </figure>
-          <figure>
-            <div class="term">
-              <div class="term-bar"><i></i><i></i><i></i><span>claude code</span></div>
-<pre><span class="u">› Run prune tasks -n 10 and work through them.</span>
-
-<span class="m">● prune.tasks(limit: 10)</span>
-  4 tasks · P1 ×2 · P2 ×1 · P4 ×1
-<span class="m">● prune.safe_to_delete(src/legacy/orphan.ts, *)</span>
-  safe_to_delete: <span class="g">true</span> · no importers, no tests
-<span class="m">● Bash(prune fix --apply --path-prefix src/legacy)</span>
-  <span class="g">applied</span> delete src/legacy/orphan.ts
-<span class="m">● Bash(prune verify dead_exports-6887f17e)</span>
-  <span class="g">✓</span> Finding resolved
-  Next: Interface Sprawl — 3 types for User …</pre>
-            </div>
-            <figcaption>Agents call Prune over MCP. They get the work list and can check it's safe before deleting anything.</figcaption>
-          </figure>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="run" aria-labelledby="run-title">
+    <section class="section band" id="run" aria-labelledby="run-title">
       <div class="wrap">
         <p class="kicker">set it up</p>
         <h2 id="run-title">You don't configure it. Your agent does.</h2>
-        <p class="section-lede">Paste one line into Claude Code, Cursor or any coding agent. It follows <a href="/setup">a runbook written for agents</a>: install with your package manager, record a baseline, add the check to the hook system you already use, connect MCP, and leave instructions for the next agent.</p>
+        <p class="section-lede">Paste one line into Claude Code, Cursor or any coding agent. It follows <a href="/setup">a runbook written for agents</a> and reports back when it's done.</p>
         <div class="agent-prompt">
           <div class="agent-prompt-text">
             <span class="agent-prompt-label">paste into your agent</span>
@@ -331,13 +188,14 @@ and commit the baseline.
           <button class="copy" type="button" data-copy="Set up Prune in this repo by following https://prunecode.ai/setup, then show me the top cleanup tasks.">copy</button>
         </div>
         <ol class="agent-steps" aria-label="What the agent does">
-          <li><b>Installs</b> with your package manager, e.g. <code>pnpm add -D prunecode</code></li>
+          <li><b>Installs</b> with your package manager</li>
           <li><b>Baselines</b> existing debt so nobody is blocked</li>
           <li><b>Hooks</b> <code>prune check</code> into husky, lefthook or pre-commit</li>
           <li><b>Connects</b> the MCP server to your client</li>
           <li><b>Leaves notes</b> in AGENTS.md for the next agent</li>
         </ol>
-        <p class="manual-label">What it sets up, if you'd rather check it or do it by hand:</p>
+        <details class="manual">
+          <summary>Prefer to set it up by hand? See exactly what the agent adds.</summary>
         <div class="tabs" data-tabs>
           <div class="tablist" role="tablist" aria-label="Integration">
             <button role="tab" id="t-precommit" aria-controls="p-precommit" aria-selected="true">pre-commit</button>
@@ -414,6 +272,124 @@ claude mcp add prune -- prune mcp</pre></div>
 After a refactor, run `prune check --fail-on medium`
 and fix what it reports.</pre></div>
           </div>
+        </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="how" aria-labelledby="how-title">
+      <div class="wrap">
+        <p class="kicker">how it works</p>
+        <h2 id="how-title">Prune marks. Your agent cuts. Prune checks the cut.</h2>
+        <p class="section-lede">Prune never rewrites your code behind your back. It finds the dead wood, writes a precise task, and verifies the result, so an agent can clean up without guessing.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-head"><h3>Mark</h3></div>
+            <p>Prune indexes the module graph locally and walks it from every entry point: <code>package.json</code>, configs, scripts, and Next.js and Convex routes. Every export gets a reachability class.</p>
+          </div>
+          <div class="step">
+            <div class="step-head"><h3>Hand off</h3></div>
+            <p><code>prune tasks</code> turns findings into a prioritized checklist. Each task says where, why, what to change, and the exact command that proves it's done.</p>
+          </div>
+          <div class="step">
+            <div class="step-head"><h3>Verify</h3></div>
+            <p>The agent runs each task's check. Fixes Prune applies itself are reverted automatically if your typecheck fails, and the pre-commit check stops new dead wood at the door.</p>
+          </div>
+        </div>
+        <div class="demo">
+          <figure>
+            <div class="term">
+              <div class="term-bar"><i></i><i></i><i></i><span>pre-commit</span></div>
+<pre><span class="p">$</span> git commit -m "use helper directly"
+<span class="r">prune check: 1 new finding(s) at or above medium</span>
+<span class="m">(2 file(s) and their importers)</span>
+
+  <span class="y">medium</span> Dead Exports — 2 unused in lib.ts
+    src/lib.ts:1
+    Next: prune 2 exports in src/lib.ts
+    Plan: prune plan dead_exports-72b08f4a
+
+Fix them, or accept them with `prune baseline`
+and commit the baseline.
+<span class="m">Skip once with `git commit --no-verify`.</span></pre>
+            </div>
+            <figcaption>Your change stopped using <code>used()</code>, so the hook caught the export it left behind in a file you didn't touch.</figcaption>
+          </figure>
+          <figure>
+            <div class="term">
+              <div class="term-bar"><i></i><i></i><i></i><span>claude code</span></div>
+<pre><span class="u">› Run prune tasks -n 10 and work through them.</span>
+
+<span class="m">● prune.tasks(limit: 10)</span>
+  4 tasks · P1 ×2 · P2 ×1 · P4 ×1
+<span class="m">● prune.safe_to_delete(src/legacy/orphan.ts, *)</span>
+  safe_to_delete: <span class="g">true</span> · no importers, no tests
+<span class="m">● Bash(prune fix --apply --path-prefix src/legacy)</span>
+  <span class="g">applied</span> delete src/legacy/orphan.ts
+<span class="m">● Bash(prune verify dead_exports-6887f17e)</span>
+  <span class="g">✓</span> Finding resolved
+  Next: Interface Sprawl — 3 types for User …</pre>
+            </div>
+            <figcaption>Agents call Prune over MCP. They get the work list and can check it's safe before deleting anything.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="finds" aria-labelledby="finds-title">
+      <div class="wrap">
+        <p class="kicker">what it finds</p>
+        <h2 id="finds-title">Eight detectors, tuned against false positives.</h2>
+        <p class="section-lede">Each finding comes with the locations, why it matters, a refactor plan, and an id that stays stable across unrelated edits.</p>
+        <div class="grid">
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Dead exports</h3>
+            <p>Exports classified by reachability from your real entry points, frameworks included.</p>
+            <div class="eg">formatDate · unused</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Unreachable files</h3>
+            <p>Whole files no entry point, script, config or framework route loads.</p>
+            <div class="eg">src/legacy/orphan.ts</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>God files</h3>
+            <p>Files whose behavior outgrew one concept. Schemas and constant data count as declarations, not behavior.</p>
+            <div class="eg">utils.ts · 41 functions</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-essential">essential</span>
+            <h3>Import cycles</h3>
+            <p>Runtime value cycles, kept separate from harmless type-only cycles.</p>
+            <div class="eg">auth.ts → session.ts → auth.ts</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Interface sprawl</h3>
+            <p>Types, interfaces and <code>z.object</code> / <code>v.object</code> validators that restate the same fields.</p>
+            <div class="eg">User · UserDTO · UserInfo</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Lexicon</h3>
+            <p>One shape under many names, or one name used for unrelated shapes.</p>
+            <div class="eg">"draft" means 3 things</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-recommended">recommended</span>
+            <h3>Redundant logic</h3>
+            <p>Near-duplicate functions, matched structurally and with optional local embeddings.</p>
+            <div class="eg">getUserById ≈ fetchUser</div>
+          </article>
+          <article class="card">
+            <span class="tier tier-emerging">emerging</span>
+            <h3>Barrels &amp; over-abstraction</h3>
+            <p>Index files re-exporting half the repo, and wrappers that only forward a call.</p>
+            <div class="eg">index.ts · 64 re-exports</div>
+          </article>
         </div>
       </div>
     </section>
@@ -515,6 +491,7 @@ and fix what it reports.</pre></div>
         </div>
       </div>
     </section>
+  
   </main>
 
   <footer class="footer">

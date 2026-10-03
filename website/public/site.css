@@ -1361,3 +1361,140 @@ td code,
   align-items: center;
   gap: 20px;
 }
+
+/* ---------- Setup band: the page's one dark, full-bleed moment ---------- */
+.band {
+  --band-bg: #1b1f1a;
+  --band-ink: #efeadf;
+  --band-muted: #a3aa98;
+  --band-line: rgb(255 255 255 / 0.1);
+  background:
+    radial-gradient(70% 90% at 85% 0%, rgb(143 191 99 / 0.13), transparent 60%),
+    var(--band-bg);
+  color: var(--band-ink);
+  border-top: 0 !important;
+  padding: 104px 0 96px;
+}
+
+:root[data-theme="dark"] .band {
+  --band-bg: #0c0e0b;
+  border-block: 1px solid var(--line);
+}
+
+.section.band + .section {
+  border-top: 0;
+}
+
+.band .kicker {
+  color: #f08a5d;
+}
+
+.band h2 {
+  color: var(--band-ink);
+}
+
+.band .section-lede {
+  color: var(--band-muted);
+}
+
+.band .section-lede a {
+  color: var(--band-ink);
+  text-underline-offset: 3px;
+}
+
+.band code {
+  background: rgb(255 255 255 / 0.08);
+  border-color: var(--band-line);
+  color: var(--band-ink);
+}
+
+.band .agent-prompt {
+  background: rgb(255 255 255 / 0.05);
+  border: 1px solid var(--band-line);
+  box-shadow: 0 30px 60px -40px rgb(0 0 0 / 0.8);
+  padding: 26px 26px 26px 30px;
+}
+
+.band .agent-prompt p {
+  font-size: clamp(18px, 2vw, 22px);
+}
+
+.band .agent-prompt .copy {
+  background: var(--band-ink);
+  color: var(--band-bg);
+  border-color: var(--band-ink);
+  padding: 9px 16px;
+  font-weight: 600;
+}
+
+.band .agent-steps li {
+  border-top-color: var(--band-line);
+  color: var(--band-muted);
+}
+
+.band .agent-steps b {
+  color: var(--band-ink);
+}
+
+.band .agent-steps li::before {
+  color: #f08a5d;
+}
+
+.manual {
+  margin-top: 8px;
+}
+
+.manual > summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font: 500 14px var(--mono);
+  color: var(--band-muted);
+  padding: 8px 0;
+}
+
+.manual > summary::-webkit-details-marker {
+  display: none;
+}
+
+.manual > summary::before {
+  content: "+";
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--band-line);
+  border-radius: 6px;
+  transition: transform 0.2s ease;
+}
+
+.manual[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.manual > summary:hover {
+  color: var(--band-ink);
+}
+
+.manual .tabs {
+  margin-top: 14px;
+  color: var(--ink);
+}
+
+.manual .tabs code {
+  background: var(--bg-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* How it works: text steps, then the two real demos */
+.step {
+  border-top: 2px solid var(--line);
+  padding-top: 16px;
+}
+
+#how .demo {
+  margin-top: 40px;
+}
