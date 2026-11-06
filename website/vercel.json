@@ -5,9 +5,15 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": { "includeFiles": ["views/**", "content/**", "data/**", "public/**"] }
-    }
+    },
+    { "src": "public/garden.js", "use": "@vercel/static" }
   ],
   "routes": [
+    {
+      "src": "/garden.js",
+      "dest": "/public/garden.js",
+      "headers": { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "public, max-age=0, must-revalidate" }
+    },
     {
       "src": "/(.*)",
       "dest": "server.js"
