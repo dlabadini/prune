@@ -9,6 +9,6 @@
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
     "express": "^5.2.1",
-    "marked": "^16.4.2"
+    "marked": "^15.0.12"
   }
 }
