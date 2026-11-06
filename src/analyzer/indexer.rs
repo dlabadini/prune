@@ -1,36 +1,25 @@
-//! Indexer for extracting symbols and imports from source files
+//! Indexer for extracting symbols and imports from source files.
 
-use super::parser::{ParsedImport, ParsedSymbol, Parser};
+use super::parser::{parse_source, ParsedFile};
 use crate::analyzer::AnalyzerError;
+use crate::structural::{self, StructuralHit};
 
-/// Indexer that uses tree-sitter parser to extract code structure
-pub struct Indexer {
-    parser: Parser,
-}
+/// Indexer that uses Oxc for symbols and ast-grep for structural rules.
+pub struct Indexer;
 
 impl Indexer {
     pub fn new() -> Self {
-        Self {
-            parser: Parser::new(),
-        }
+        Self
     }
 
-    /// Parse a file and extract symbols
-    pub fn parse_file(
+    pub fn index_source(
         &mut self,
         content: &str,
         extension: &str,
-    ) -> Result<Vec<ParsedSymbol>, AnalyzerError> {
-        Ok(self.parser.parse_symbols(content, extension))
-    }
-
-    /// Parse a file and extract imports
-    pub fn parse_imports(
-        &mut self,
-        content: &str,
-        extension: &str,
-    ) -> Result<Vec<ParsedImport>, AnalyzerError> {
-        Ok(self.parser.parse_imports(content, extension))
+    ) -> Result<IndexedFile, AnalyzerError> {
+        let parsed = parse_source(content, extension);
+        let structural = structural::analyze(content, extension);
+        Ok(IndexedFile { parsed, structural })
     }
 }
 
@@ -38,4 +27,9 @@ impl Default for Indexer {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub struct IndexedFile {
+    pub parsed: ParsedFile,
+    pub structural: Vec<StructuralHit>,
 }

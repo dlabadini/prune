@@ -1,5 +1,5 @@
 {
-  "name": "keel-website",
+  "name": "prune-website",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "marked": "^16.4.2"
   }
 }

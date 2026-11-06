@@ -1,0 +1,7 @@
+disabled_patterns = ["over_abstraction", "redundant_logic"]
+
+[thresholds]
+embeddings_enabled = false
+
+[entries]
+files = ["cycle/entry.ts"]

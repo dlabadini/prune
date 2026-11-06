@@ -14,32 +14,45 @@ impl PatternDetector for OverAbstractionDetector {
     fn detect(&self, db: &Database, _config: &Config) -> Vec<Finding> {
         let mut findings = Vec::new();
 
-        // Get all symbols
-        let all_files = match db.get_all_files() {
-            Ok(files) => files,
-            Err(_) => return findings,
-        };
-
         // Look for patterns of over-abstraction:
         // 1. Interfaces with single implementations
-        // 2. Wrapper functions that just call another function
+        // 2. Wrapper functions that only forward their parameters (the structural rule
+        //    in structural.rs checks arguments against parameters)
         // 3. Factory functions that always return the same type
 
-        // Check for wrapper functions
-        for file in &all_files {
-            let symbols = match db.get_file_symbols(file.id) {
-                Ok(syms) => syms,
-                Err(_) => continue,
-            };
-
-            for symbol in &symbols {
-                if symbol.kind != SymbolKind::Function {
+        if let Ok(notes) = db.structural_notes("wrapper") {
+            for note in notes {
+                if is_low_signal_path(&note.file_path) {
                     continue;
                 }
-
-                if let Some(finding) = detect_wrapper_function(symbol, &file.path, db) {
-                    findings.push(finding);
-                }
+                let title = format!("Wrapper function: {}", note.name);
+                let description = format!(
+                    "`{}` matches a pass-through wrapper around `{}`.",
+                    note.name,
+                    if note.detail.is_empty() {
+                        "another function"
+                    } else {
+                        &note.detail
+                    }
+                );
+                let finding = Finding::new(
+                    PatternType::OverAbstraction,
+                    Severity::Low,
+                    0.82,
+                    title,
+                    description,
+                )
+                .with_rationale(
+                    "ast-grep matched a function whose body only forwards to another call."
+                        .to_string(),
+                )
+                .with_locations(vec![Location::new(note.file_path, note.line, note.line)
+                    .with_context(format!("Wraps {}", note.detail))])
+                .with_suggested_fix(
+                    "Inline the wrapper or keep it only when it adds a real boundary.".to_string(),
+                )
+                .with_related_concepts(vec![note.name, note.detail]);
+                findings.push(finding);
             }
         }
 
@@ -60,137 +73,18 @@ impl PatternDetector for OverAbstractionDetector {
             }
         }
 
+        findings.truncate(40);
         findings
     }
 }
 
-fn detect_wrapper_function(func: &Symbol, file_path: &str, _db: &Database) -> Option<Finding> {
-    let source = &func.source_text;
-    let lines: Vec<_> = source
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.starts_with("/*"))
-        .collect();
-
-    // A wrapper function typically has:
-    // - Very few lines (signature + return + closing brace)
-    // - A single return statement that calls another function
-
-    if lines.len() > 5 {
-        return None;
-    }
-
-    // Check if body is just a function call
-    let body_lines: Vec<_> = lines
-        .iter()
-        .filter(|l| {
-            !l.contains("function")
-                && !l.starts_with("export")
-                && **l != "{"
-                && **l != "}"
-                && **l != "};"
-        })
-        .collect();
-
-    if body_lines.len() != 1 {
-        return None;
-    }
-
-    let body_line = body_lines[0];
-
-    // Check for simple delegation patterns
-    let is_delegation =
-        body_line.starts_with("return ") && (body_line.contains("(") || body_line.ends_with(";"));
-
-    // Check for arrow function wrappers
-    let is_arrow_wrapper = body_line.contains("=>") && body_line.contains("(");
-
-    if !is_delegation && !is_arrow_wrapper {
-        return None;
-    }
-
-    // Extract the called function name if possible
-    let called_func = extract_called_function(body_line);
-
-    let title = format!("Wrapper function: {}", func.name);
-    let description = format!(
-        "`{}` appears to be a thin wrapper that delegates to `{}`. \
-        Consider whether this indirection adds value.",
-        func.name,
-        called_func.as_deref().unwrap_or("another function")
-    );
-
-    let rationale = String::from(
-        "Thin wrapper functions add indirection without value:\n\
-        - Extra stack frames and function call overhead\n\
-        - More code to read and understand\n\
-        - Changes require updating multiple places\n\
-        - Makes stack traces harder to read",
-    );
-
-    let location = Location::new(file_path.to_string(), func.start_line, func.end_line)
-        .with_snippet(func.source_text.clone())
-        .with_context(format!("Wraps: {}", called_func.as_deref().unwrap_or("?")));
-
-    let suggested_fix = format!(
-        r#"1. **Evaluate if wrapper is needed**:
-   - Does it add meaningful abstraction? (e.g., error handling, logging)
-   - Is it for dependency injection/testing?
-   - Does it adapt an interface?
-
-2. **If not needed**:
-   - Replace calls to `{}` with direct calls to `{}`
-   - Remove the wrapper function
-
-3. **If needed for testing/DI**:
-   - Add a comment explaining why: `// Wrapper for testability`
-   - Consider using dependency injection instead"#,
-        func.name,
-        called_func.as_deref().unwrap_or("the underlying function")
-    );
-
-    let mut finding = Finding::new(
-        PatternType::OverAbstraction,
-        Severity::Low,
-        0.70,
-        title,
-        description,
-    )
-    .with_rationale(rationale)
-    .with_locations(vec![location])
-    .with_suggested_fix(suggested_fix);
-
-    if let Some(called) = called_func {
-        finding = finding.with_related_concepts(vec![func.name.clone(), called]);
-    }
-
-    Some(finding)
-}
-
-fn extract_called_function(line: &str) -> Option<String> {
-    // Try to extract function name from patterns like:
-    // return foo(args)
-    // return this.foo(args)
-    // () => foo(args)
-
-    let cleaned = line
-        .trim()
-        .trim_start_matches("return ")
-        .trim_start_matches("() => ")
-        .trim_start_matches("async ")
-        .trim_end_matches(';');
-
-    // Find the function call
-    if let Some(paren_pos) = cleaned.find('(') {
-        let func_part = &cleaned[..paren_pos];
-        // Get the last identifier (after any dots)
-        let func_name = func_part.rsplit('.').next().unwrap_or(func_part);
-        if !func_name.is_empty() && func_name.chars().all(|c| c.is_alphanumeric() || c == '_') {
-            return Some(func_name.to_string());
-        }
-    }
-
-    None
+fn is_low_signal_path(path: &str) -> bool {
+    path.contains("/components/ui/")
+        || path.contains("/ui/")
+        || path.contains("/testing/")
+        || path.contains("/seed/")
+        || path.contains("/_generated/")
+        || path.contains("/patches/")
 }
 
 fn detect_single_impl_interface(
@@ -297,25 +191,4 @@ fn detect_single_impl_interface(
         .with_suggested_fix(suggested_fix)
         .with_related_concepts(vec![interface_name.clone(), impl_class.name.clone()]),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_called_function() {
-        assert_eq!(
-            extract_called_function("return foo(args)"),
-            Some("foo".to_string())
-        );
-        assert_eq!(
-            extract_called_function("return this.bar(x, y)"),
-            Some("bar".to_string())
-        );
-        assert_eq!(
-            extract_called_function("() => baz()"),
-            Some("baz".to_string())
-        );
-    }
 }

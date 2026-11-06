@@ -1,0 +1,117 @@
+strictness = "default"
+exclude = [
+    "**/fixtures/**",
+    "target/**",
+    "node_modules/**",
+    "dist/**",
+    "build/**",
+    ".git/**",
+    ".prune/**",
+    "*.min.js",
+    "*.bundle.js",
+    "patches/**",
+    "**/_generated/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.integration.test.ts",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+]
+include = []
+disabled_patterns = []
+boundaries = []
+
+[thresholds]
+
+[entries]
+files = [
+    "vercel.ts",
+    "vercel.js",
+    "vercel.mjs",
+]
+test_files = [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.test.js",
+    "**/*.test.jsx",
+    "**/*.test.mts",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.spec.js",
+    "**/*.spec.jsx",
+    "**/__tests__/**",
+    "**/__mocks__/**",
+    "**/__fixtures__/**",
+    "e2e/**",
+]
+index_tests = true
+private_package_exports_are_api = false
+
+[frameworks.next]
+enabled = true
+roots = []
+app_entries = [
+    "page",
+    "layout",
+    "route",
+    "loading",
+    "error",
+    "global-error",
+    "global-not-found",
+    "not-found",
+    "forbidden",
+    "unauthorized",
+    "template",
+    "default",
+    "opengraph-image",
+    "twitter-image",
+    "icon",
+    "apple-icon",
+    "sitemap",
+    "robots",
+    "manifest",
+]
+root_entries = [
+    "middleware",
+    "proxy",
+    "instrumentation",
+    "instrumentation-client",
+    "mdx-components",
+]
+
+[frameworks.convex]
+enabled = true
+dirs = []
+function_builders = [
+    "query",
+    "mutation",
+    "action",
+    "internalQuery",
+    "internalMutation",
+    "internalAction",
+    "httpAction",
+]
+builder_suffixes = [
+    "Query",
+    "Mutation",
+    "Action",
+]
+entry_modules = [
+    "schema",
+    "http",
+    "crons",
+    "convex.config",
+    "auth.config",
+]
+
+[dead_exports]
+report_unreachable_files = true
+report_test_only = true
+report_same_file = true
+
+[lexicon]
+smash_names = false
+
+[lexicon.glossary]
+
+[fix]

@@ -1,0 +1,16 @@
+disabled_patterns = ["over_abstraction", "redundant_logic", "dead_exports"]
+
+[thresholds]
+embeddings_enabled = false
+
+[lexicon.glossary]
+draft = "a held reply awaiting review"
+
+[[boundaries]]
+name = "inbox"
+paths = ["packages/inbox/**"]
+fenced = true
+
+[[boundaries]]
+name = "app"
+paths = ["convex/**", "components/**", "hooks/**"]

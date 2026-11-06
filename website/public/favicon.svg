@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>.stem{fill:#1e231d}@media (prefers-color-scheme:dark){.stem{fill:#ece7db}}</style>
+  <path class="stem" d="M6 5.7a2.7 2.7 0 0 1 5.4 0v20.2L6 29z"/>
+  <path d="M13 4.2A1.2 1.2 0 0 1 14.2 3h2.4a9 9 0 0 1 0 18h-2.4A1.2 1.2 0 0 1 13 19.8z" fill="#5e9f4e"/>
+</svg>

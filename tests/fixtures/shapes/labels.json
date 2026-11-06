@@ -1,0 +1,14 @@
+{
+  "shape_pairs": {
+    "positive": ["ThreadRow~vThreadRow", "ThreadRow~ThreadSummary", "ThreadSummary~vThreadRow"],
+    "negative": ["InboxThread~ThreadRow", "InboxThread~vThreadRow", "InboxThread~ThreadSummary", "Draft~DraftInputs"]
+  },
+  "lexicon_glossary": {
+    "positive": ["glossary:draft"],
+    "negative": []
+  },
+  "lexicon_smash": {
+    "positive": [],
+    "negative": ["ThreadUIAction"]
+  }
+}

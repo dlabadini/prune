@@ -1,0 +1,9 @@
+{
+  "name": "reachability-fixture",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "seed": "bun scripts/seed.ts",
+    "doctor": "bunx convex run messages:runFromCli"
+  }
+}

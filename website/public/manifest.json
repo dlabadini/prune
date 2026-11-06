@@ -1,13 +1,11 @@
 {
-  "name": "Prune - Detect AI-Generated Code Debt",
+  "name": "Prune — the structural linter for AI-written code",
   "short_name": "Prune",
-  "description": "Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt.",
+  "description": "Free, local-first structural linter for AI-written TypeScript. Pre-commit hook and MCP server.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0a0a",
-  "theme_color": "#0a0a0a",
+  "background_color": "#f3eee4",
+  "theme_color": "#f3eee4",
   "categories": ["developer-tools", "productivity"],
-  "icons": [
-    { "src": "/favicon.ico", "sizes": "32x32", "type": "image/x-icon" }
-  ]
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }

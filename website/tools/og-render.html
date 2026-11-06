@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- Source for public/og.png. To re-render: copy into public/, run the dev server, then
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --hide-scrollbars --window-size=1200,630 --virtual-time-budget=8000 --screenshot=public/og.png http://localhost:3000/og-render.html
+  and remove the copy from public/. -->
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/site.css">
+<script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }
+</script>
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #f3eee4; }
+  .og { display: grid; grid-template-columns: 540px 660px; height: 630px; }
+  .text { padding: 64px 0 56px 72px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 14px; font: 700 34px "JetBrains Mono", monospace; color: #1e231d; letter-spacing: -0.02em; }
+  .brand svg { width: 46px; height: 46px; }
+  h1 { font: 700 64px/1.02 "Bricolage Grotesque", sans-serif; letter-spacing: -0.035em; color: #1e231d; margin: 56px 0 22px; }
+  h1 span { color: #c9532a; text-decoration: line-through; text-decoration-thickness: 0.07em; }
+  p { font: 400 24px/1.4 "Bricolage Grotesque", sans-serif; color: #5d6458; margin: 0; }
+  .tags { margin-top: auto; display: flex; gap: 8px; white-space: nowrap; font: 500 15px "JetBrains Mono", monospace; color: #5d6458; }
+  .tags b { border: 1.5px solid #d8cfbf; border-radius: 999px; padding: 5px 14px; font-weight: 500; background: #fbf8f2; }
+  .garden { width: 600px; height: 600px; margin: 15px 0 0 20px; border-radius: 0; aspect-ratio: auto; }
+  .garden-legend, .garden-labels { display: none; }
+</style>
+</head>
+<body>
+  <div class="og">
+    <div class="text">
+      <div class="brand">
+        <svg viewBox="0 0 32 32"><path d="M6 5.7a2.7 2.7 0 0 1 5.4 0v20.2L6 29z" fill="#1e231d"/><path d="M13 4.2A1.2 1.2 0 0 1 14.2 3h2.4a9 9 0 0 1 0 18h-2.4A1.2 1.2 0 0 1 13 19.8z" fill="#5e9f4e"/></svg>
+        prune
+      </div>
+      <h1>Your agent grows the code. Prune <span>trims</span> it.</h1>
+      <p>The structural linter for AI-written TypeScript.</p>
+      <div class="tags"><b>free &amp; MIT</b><b>local-first</b><b>pre-commit</b><b>MCP</b></div>
+    </div>
+    <div class="garden" id="garden"></div>
+  </div>
+  <script type="module">
+    import { mountGarden } from "/garden.js";
+    await document.fonts.ready;
+    mountGarden(document.getElementById("garden"), { startAt: 5.0, paused: true, capture: true });
+    document.body.dataset.ready = "1";
+  </script>
+</body>
+</html>

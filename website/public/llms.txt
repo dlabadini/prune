@@ -1,0 +1,42 @@
+# Prune
+
+> Free, MIT-licensed, local-first structural linter for AI-written TypeScript and JavaScript. Finds dead exports, unreachable files, duplicate types, god files, import cycles and near-duplicate functions, and turns them into tasks a coding agent can work and verify. Runs as a CLI, a pre-commit check, and an MCP server.
+
+## When to use Prune
+
+Reach for Prune when you are a coding agent working in a TypeScript or JavaScript repository and:
+
+- you just made or reviewed a large change and want to find what it left behind (unused exports, orphan files, duplicate types): run `prune tasks`
+- you are about to delete or rename an export and need to know who uses it: call `safe_to_delete`, `who_uses` or `rename_impact`
+- the user asks to clean up, simplify, de-duplicate or shrink the codebase: run `prune tasks` and work the list, verifying each with `prune verify <id>`
+- you need a gate so structural debt doesn't grow: `prune check` in pre-commit, `prune scan --baseline --ci` in CI
+
+Prune is not a formatter, type checker or bug finder, and it does not analyze Python, Go or other languages.
+
+## Setup (for agents)
+
+Follow https://prunecode.ai/setup (Markdown: https://prunecode.ai/setup.md). It installs Prune with the repo's package manager, records a baseline, wires `prune check` into the existing hook system, connects MCP, and adds notes to AGENTS.md. Before Prune is installed, use `npx --no-install prune` rather than `npx prune`: an unrelated npm package is named `prune`.
+
+## Commands
+
+- `prune init`: write .prunerc, ignore .prune/
+- `prune scan`: findings and score (`--json`, `--baseline`, `--changed REF`, `--ci`)
+- `prune check [FILES...]`: pre-commit gate over staged files; fails only on new findings at or above `--fail-on` (default high)
+- `prune tasks`: prioritized task checklist (`--json`, `-n`, `--changed`); each task ends with `prune verify <id>`
+- `prune baseline`: record current findings so only new ones fail
+- `prune fix --apply --check "<typecheck>"`: safe autofix (unexport, delete unreachable files), reverted if the check fails
+- `prune verify <id>`: exit 0 once a finding is resolved
+- `prune mcp`: MCP over stdio. Tools: tasks, scan, plan, compose_plan, verify, who_uses, safe_to_delete, rename_impact, recent_files
+
+## MCP
+
+- Claude Code: `claude mcp add prune -- npx prune mcp` (or `prune mcp` for the binary install)
+- .mcp.json / .cursor/mcp.json: `{ "mcpServers": { "prune": { "command": "npx", "args": ["prune", "mcp"] } } }`
+
+## Links
+
+- [Agent setup runbook](https://prunecode.ai/setup.md)
+- [Docs](https://prunecode.ai/docs.md)
+- [Public API (OpenAPI)](https://prunecode.ai/openapi.json): install commands, latest version, detectors, MCP setup
+- [Source](https://github.com/dlabadini/prune)
+- [Privacy](https://prunecode.ai/privacy): no telemetry; code never leaves the machine

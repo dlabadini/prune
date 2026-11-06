@@ -1,0 +1,38 @@
+[
+  {
+    "q": "What is Prune?",
+    "a": "Prune is a free, open-source structural linter for TypeScript and JavaScript. It reads your whole module graph to find what coding agents tend to leave behind: dead exports, unreachable files, duplicate types, god files, import cycles and near-duplicate functions. It then turns those findings into tasks an agent can work through and verify."
+  },
+  {
+    "q": "Do I need to configure anything?",
+    "a": "Usually not. Ask your coding agent to follow https://prunecode.ai/setup and it handles the install, the baseline, the pre-commit hook and the MCP connection, using whatever your repo already has. Defaults work without a .prunerc. You only touch config to exclude generated code or tune thresholds."
+  },
+  {
+    "q": "Is Prune free?",
+    "a": "Yes. Prune is MIT licensed and free for any use, including commercial. There is no account, no license key and no paid tier."
+  },
+  {
+    "q": "Does my code leave my machine?",
+    "a": "No. Prune is a single binary that parses, indexes and analyzes your code locally. A scan makes no network calls. The optional semantic matching uses a small embedding model that runs locally and is only downloaded when you enable it."
+  },
+  {
+    "q": "Which languages and frameworks does Prune support?",
+    "a": "TypeScript and JavaScript (.ts, .tsx, .js, .jsx, .mts, .mjs, .cts, .cjs). Entry points are discovered from package.json, tool configs, scripts and shebang files, and there are built-in adapters for Next.js routes and Convex functions."
+  },
+  {
+    "q": "How is Prune different from ESLint or an unused-exports tool?",
+    "a": "ESLint and tsc check code file by file. Unused-export tools report what nothing imports. Prune classifies every export by how far it is from used (used, test_only, same_file_only, unused, unreachable). It also finds duplicate shapes, god files and import cycles, and it hands each finding to your agent as a task with a verify command."
+  },
+  {
+    "q": "How do I use Prune with Claude Code, Cursor or another agent?",
+    "a": "Tell your agent: \"Set up Prune in this repo by following https://prunecode.ai/setup.\" The setup page is written for agents. It installs Prune with your package manager, adds the pre-commit check, and connects the MCP server (for Claude Code: `claude mcp add prune -- npx prune mcp`). After that, the agent can call tasks, verify, who_uses, safe_to_delete and rename_impact on its own."
+  },
+  {
+    "q": "Will Prune block commits because of existing debt?",
+    "a": "Not if you record a baseline. Run `prune baseline` once and commit .prune-baseline.json. After that, `prune check` in pre-commit and `prune scan --baseline --ci` fail only on findings that are new."
+  },
+  {
+    "q": "Can Prune fix problems automatically?",
+    "a": "Only the mechanical ones: dropping export from symbols that only their own file uses, and deleting unreachable files. `prune fix --apply --check \"<your typecheck>\"` applies each fix, runs your check, and reverts the fix if the check fails. Everything else becomes a task for you or your agent."
+  }
+]

@@ -1,12 +1,18 @@
 [package]
 name = "prunecode"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Detect structural and semantic anti-patterns in codebases"
+description = "Free, local-first structural linter for AI-written TypeScript: dead exports, god files, duplicate types, import cycles. CLI, pre-commit hook, and MCP server."
 license = "MIT"
 repository = "https://github.com/dlabadini/prune"
-keywords = ["linter", "code-analysis", "refactoring", "ai", "developer-tools"]
+keywords = ["linter", "typescript", "dead-code", "mcp", "pre-commit"]
 categories = ["development-tools", "command-line-utilities"]
+include = [
+    "/src/**",
+    "/README.md",
+    "/LICENSE*",
+    "/rust-toolchain.toml",
+]
 
 [dependencies]
 # CLI & TUI
@@ -15,13 +21,10 @@ ratatui = "0.28"
 crossterm = "0.28"
 arboard = "3.4"
 
-# Parsing
-tree-sitter = "0.24"
-tree-sitter-typescript = "0.23"
-tree-sitter-javascript = "0.23"
+# Parsing and structural search (tree-sitter comes in via ast-grep)
 
 # Storage
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "load_extension"] }
 
 # Async & File Watching
 tokio = { version = "1.40", features = ["full"] }
@@ -45,13 +48,27 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ignore = "0.4"
 similar = "2.6"
 dirs = "5.0"
+fastembed = "7.0.1"
+rmcp = { version = "3.4.0", features = ["server", "transport-io"] }
+schemars = { version = "1.2.2", features = ["derive"] }
+oxc_allocator = "0.151.0"
+oxc_parser = "0.151.0"
+oxc_semantic = "0.151.0"
+oxc_ast = "0.151.0"
+oxc_span = "0.151.0"
+oxc_resolver = "11.24.3"
+ast-grep-core = "0.45.3"
+ast-grep-language = { version = "0.45.3", default-features = false, features = ["tree-sitter-typescript", "tree-sitter-javascript"] }
+petgraph = "0.8.3"
+gix = "0.87.1"
+sqlite-vec = "0.1.9"
 
 [[bin]]
 name = "prune"
 path = "src/main.rs"
 
 [lib]
-name = "prune_core"
+name = "prune"
 path = "src/lib.rs"
 
 [dev-dependencies]

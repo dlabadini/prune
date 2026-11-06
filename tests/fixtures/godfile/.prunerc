@@ -1,0 +1,4 @@
+disabled_patterns = ["over_abstraction", "redundant_logic", "dead_exports"]
+
+[thresholds]
+embeddings_enabled = false

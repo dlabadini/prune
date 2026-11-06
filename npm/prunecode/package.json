@@ -1,0 +1,25 @@
+{
+  "name": "prunecode",
+  "version": "0.2.0",
+  "description": "Free, local-first structural linter for AI-written TypeScript: dead exports, god files, duplicate types, import cycles. CLI, pre-commit hook, and MCP server.",
+  "license": "MIT",
+  "homepage": "https://prunecode.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dlabadini/prune.git"
+  },
+  "keywords": ["linter", "typescript", "dead-code", "unused-exports", "mcp", "pre-commit", "refactoring"],
+  "bin": {
+    "prune": "bin/prune.js"
+  },
+  "files": ["bin"],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "prunecode-darwin-arm64": "0.2.0",
+    "prunecode-darwin-x64": "0.2.0",
+    "prunecode-linux-arm64": "0.2.0",
+    "prunecode-linux-x64": "0.2.0"
+  }
+}

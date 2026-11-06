@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<head>
+  <script src="/app.js" defer></script>
+  <script type="importmap">{ "imports": { "three": "https://cdn.example.com/three.js" } }</script>
+</head>
+<body>
+  <div id="widget"></div>
+  <script type="module">
+    import { mount } from "/widget.js";
+    mount(document.getElementById("widget"));
+  </script>
+</body>
+</html>

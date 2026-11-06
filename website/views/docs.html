@@ -1,271 +1,366 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Docs - Prune</title>
-  <meta name="description" content="Prune documentation. Learn how to install, configure, and use Prune to detect anti-patterns in your TypeScript codebase.">
+  <meta charset="utf-8">
+  <script>
+    try { if (localStorage.getItem("theme") === "dark") document.documentElement.dataset.theme = "dark"; } catch {}
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs — Prune</title>
+  <meta name="description" content="Install Prune, run it in pre-commit and CI, connect it to your coding agent over MCP, and configure detectors, entries, boundaries and baselines.">
   <link rel="canonical" href="https://prunecode.ai/docs">
+  <link rel="alternate" type="text/markdown" href="/docs.md">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/manifest.json">
-
-  <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://prunecode.ai/docs">
-  <meta property="og:title" content="Docs - Prune">
-  <meta property="og:description" content="Prune documentation. Learn how to install, configure, and use Prune to detect anti-patterns in your TypeScript codebase.">
+  <meta property="og:title" content="Prune docs">
+  <meta property="og:description" content="Install, pre-commit, CI, MCP, commands and configuration for Prune.">
   <meta property="og:site_name" content="Prune">
-
-  <!-- Twitter -->
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="Docs - Prune">
-  <meta name="twitter:description" content="Prune documentation. Learn how to install, configure, and use Prune to detect anti-patterns in your TypeScript codebase.">
-  <link rel="stylesheet" href="/styles.css">
+  <meta property="og:image" content="https://prunecode.ai/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://prunecode.ai/og.png">
   <script type="application/ld+json">
-  [
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "Prune Dev",
-      "url": "https://prunecode.ai",
-      "email": "hello@prune.dev",
-      "sameAs": ["https://github.com/prunecode/prune"]
-    },
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Prune",
-      "url": "https://prunecode.ai",
-      "description": "Find structural anti-patterns in your TypeScript codebase. Catch duplicated interfaces, god files, and dead exports before they become technical debt."
-    }
-  ]
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "TechArticle",
+        "headline": "Prune docs",
+        "description": "Install Prune, run it in pre-commit and CI, connect it to your coding agent over MCP, and configure detectors, entries, boundaries and baselines.",
+        "url": "https://prunecode.ai/docs",
+        "image": "https://prunecode.ai/og.png",
+        "inLanguage": "en",
+        "author": { "@type": "Organization", "name": "Prune", "url": "https://prunecode.ai" },
+        "publisher": { "@type": "Organization", "name": "Prune", "url": "https://prunecode.ai", "logo": { "@type": "ImageObject", "url": "https://prunecode.ai/favicon.svg" } },
+        "about": { "@type": "SoftwareApplication", "name": "Prune", "url": "https://prunecode.ai" },
+        "proficiencyLevel": "Beginner"
+      },
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Prune", "item": "https://prunecode.ai/" },
+          { "@type": "ListItem", "position": 2, "name": "Docs", "item": "https://prunecode.ai/docs" }
+        ]
+      }
+    ]
+  }
   </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <nav class="nav">
-    <div class="nav-container">
-      <a href="/" class="logo">prune</a>
-      <div class="nav-links">
-        <a href="/docs" class="active">Docs</a>
-        <a href="https://github.com/prunecode/prune">GitHub</a>
-      </div>
-    </div>
-  </nav>
-
-  <div class="docs-layout">
-    <aside class="docs-sidebar">
-      <nav class="docs-nav">
-        <a href="#installation">Installation</a>
-        <a href="#quick-start">Quick Start</a>
-        <a href="#commands">Commands</a>
-        <a href="#configuration">Configuration</a>
-        <a href="#patterns">Patterns</a>
-        <a href="#license">License</a>
+  <header class="nav">
+    <div class="wrap">
+      <a class="brand" href="/" aria-label="Prune home">
+        <svg viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M6 5.7a2.7 2.7 0 0 1 5.4 0v20.2L6 29z" fill="currentColor"/>
+          <path d="M13 4.2A1.2 1.2 0 0 1 14.2 3h2.4a9 9 0 0 1 0 18h-2.4A1.2 1.2 0 0 1 13 19.8z" fill="#5e9f4e"/>
+        </svg>
+        prune
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a class="hide-sm" href="/#how">How it works</a>
+        <a href="/docs" aria-current="page" style="color: var(--ink)">Docs</a>
+        <a class="gh" href="https://github.com/dlabadini/prune">GitHub</a>
       </nav>
-    </aside>
+    </div>
+  </header>
 
-    <main class="docs-content">
-      <h1>Documentation</h1>
+  <div class="wrap docs">
+    <nav class="docs-nav" aria-label="Docs">
+      <span class="group">Start</span>
+      <a href="#agent-setup">Agent setup</a>
+      <a href="#install">Install</a>
+      <a href="#quick-start">Quick start</a>
+      <span class="group">Run it</span>
+      <a href="#pre-commit">Pre-commit</a>
+      <a href="#ci">CI &amp; baselines</a>
+      <a href="#agents">Agents &amp; MCP</a>
+      <a href="#tui">TUI &amp; watch</a>
+      <span class="group">Reference</span>
+      <a href="#commands">Commands</a>
+      <a href="#patterns">Patterns</a>
+      <a href="#reachability">Reachability</a>
+      <a href="#config">Configuration</a>
+      <a href="#fix">Safe autofix</a>
+      <a href="#contributing">Contributing</a>
+    </nav>
 
-      <section id="installation">
-        <h2>Installation</h2>
+    <article class="prose">
+      <header class="docs-head">
+        <p class="kicker">docs · v0.2.0</p>
+        <h1>Prune docs</h1>
+        <p class="section-lede">Prune is a free, MIT-licensed structural linter for TypeScript and JavaScript. It runs locally, from your terminal, your git hooks, your CI, or your coding agent.</p>
+        <nav class="docs-quick" aria-label="Start here">
+          <a href="#agent-setup">Set up with an agent <span>recommended</span></a>
+          <a href="#install">Install by hand</a>
+          <a href="#commands">Command reference</a>
+          <a href="/docs.md">Markdown version <span>for agents</span></a>
+        </nav>
+      </header>
 
-        <h3>Quick Install (macOS/Linux)</h3>
-        <pre><code>curl -fsSL https://prunecode.ai/install.sh | sh</code></pre>
+      <section id="agent-setup" class="agent-setup">
+        <h2>Agent setup</h2>
+        <p class="section-lede">This runbook is written for coding agents. Point yours at <code>prunecode.ai/setup</code> (it's served there as Markdown too) and it works through these steps, using whatever your repo already has.</p>
+<!--SETUP-->
+      </section>
 
-        <h3>Cargo</h3>
-        <pre><code>cargo install prune</code></pre>
-
-        <h3>Manual Download</h3>
-        <p>Download the latest release from <a href="https://github.com/prunecode/prune/releases">GitHub Releases</a>.</p>
+      <section id="install">
+        <h2>Install</h2>
+        <div class="note">Using a coding agent? Skip manual install and tell it: “Set up Prune in this repo by following prunecode.ai/setup.” It follows the <a href="#agent-setup">agent setup</a> runbook above.</div>
+        <div class="term snippet"><pre><span class="m"># macOS / Linux binary (installs to ~/.prune/bin)</span>
+curl -fsSL https://prunecode.ai/install.sh | bash</pre></div>
+        <div class="term snippet"><pre><span class="m"># per-repo devDependency</span>
+npm i -D prunecode</pre></div>
+        <div class="term snippet"><pre><span class="m"># from source</span>
+cargo install prunecode</pre></div>
+        <p>Prebuilt binaries for macOS and Linux (x86_64 and arm64) are attached to every <a href="https://github.com/dlabadini/prune/releases">GitHub release</a>.</p>
       </section>
 
       <section id="quick-start">
-        <h2>Quick Start</h2>
+        <h2>Quick start</h2>
+        <div class="term snippet"><pre>prune init     <span class="m"># writes .prunerc (commit it) and ignores .prune/</span>
+prune scan     <span class="m"># findings with a score</span>
+prune tasks    <span class="m"># the same findings as a prioritized checklist</span>
+prune          <span class="m"># interactive TUI</span></pre></div>
+        <p>The local index lives in <code>.prune/</code> and is never committed. <code>.prunerc</code> is optional: defaults work out of the box.</p>
+      </section>
 
-        <p>Navigate to your TypeScript project and run:</p>
-        <pre><code>cd your-project
-prune</code></pre>
+      <section id="pre-commit">
+        <h2>Pre-commit</h2>
+        <p><code>prune check</code> checks the files staged for commit (or the files you pass) and the files that import them. It fails only on findings at or above <code>--fail-on</code> (default <code>high</code>), and it never downloads a model.</p>
+        <p>Record existing debt once so it doesn't block commits:</p>
+        <div class="term snippet"><pre>prune baseline   <span class="m"># writes .prune-baseline.json; commit it</span></pre></div>
+        <div class="note">With a baseline, <code>check</code> fails only on findings the baseline doesn't contain. It also looks one hop down, at the files your staged files import, so it catches an export your change left unused.</div>
+        <h3>pre-commit framework</h3>
+        <div class="term snippet"><pre>repos:
+  - repo: https://github.com/dlabadini/prune
+    rev: v0.2.0
+    hooks:
+      - id: prune          <span class="m"># prune on PATH; use prune-cargo to build from source</span>
+        args: [--fail-on, medium]</pre></div>
+        <h3>husky</h3>
+        <div class="term snippet"><pre><span class="m"># .husky/pre-commit</span>
+npx prune check</pre></div>
+        <h3>lefthook</h3>
+        <div class="term snippet"><pre>pre-commit:
+  commands:
+    prune:
+      glob: "*.{ts,tsx,js,jsx}"
+      run: npx prune check {staged_files}</pre></div>
+        <h3>plain git hook</h3>
+        <div class="term snippet"><pre>printf '#!/bin/sh\nexec prune check\n' &gt; .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit</pre></div>
+      </section>
 
-        <p>This launches the interactive TUI. Use arrow keys to navigate, <code>Enter</code> to expand findings, <code>p</code> to generate a refactor plan.</p>
+      <section id="ci">
+        <h2>CI &amp; baselines</h2>
+        <p><code>prune scan --baseline --ci</code> exits 1 on any finding missing from <code>.prune-baseline.json</code>. <code>--changed origin/main</code> limits findings to files a branch touched and the files that import them.</p>
+        <div class="term snippet"><pre>name: prune
+on: pull_request
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl -fsSL https://prunecode.ai/install.sh | bash
+      - run: ~/.prune/bin/prune scan --baseline --ci</pre></div>
+        <p>Finding ids come from the pattern and the symbols or files involved, not from titles or line numbers. They stay stable across unrelated edits, which is what makes them work as baseline keys.</p>
+      </section>
 
-        <h3>Headless Mode</h3>
-        <pre><code># JSON output for CI
-prune scan --json
+      <section id="agents">
+        <h2>Agents &amp; MCP</h2>
+        <p>Give an agent the work list and a way to check its own work:</p>
+        <div class="term snippet"><pre>prune tasks                  <span class="m"># markdown checklist, most urgent first</span>
+prune tasks --json -n 20     <span class="m"># machine-readable</span>
+prune tasks --changed main   <span class="m"># only what this branch touched</span></pre></div>
+        <p>Each task carries its id, priority (P1 is most urgent), locations, why it matters and the change to make. When <code>prune fix</code> can apply it, the task includes an <code>autofix</code> command. Every task ends with <code>done when: prune verify &lt;id&gt;</code>, which exits 0 once the finding is gone.</p>
+        <div class="note">A prompt that works well: “Run <code>prune tasks -n 10</code>. Work the tasks in order. Prefer each task's autofix. After each, run its done-when command and the typecheck before moving on.”</div>
+        <h3>MCP server</h3>
+        <div class="term snippet"><pre><span class="m"># Claude Code</span>
+claude mcp add prune -- prune mcp</pre></div>
+        <div class="term snippet"><pre><span class="m">// .mcp.json · .cursor/mcp.json</span>
+{ "mcpServers": { "prune": { "command": "prune", "args": ["mcp"] } } }</pre></div>
+        <table>
+          <thead><tr><th>Tool</th><th>Answers</th></tr></thead>
+          <tbody>
+            <tr><td><code>tasks</code></td><td>Prioritized tasks. Filters: <code>limit</code>, <code>min_severity</code>, <code>changed</code>, <code>use_baseline</code></td></tr>
+            <tr><td><code>scan</code></td><td>Findings and score, most severe first (same filters, default limit 50)</td></tr>
+            <tr><td><code>plan</code>, <code>compose_plan</code></td><td>Markdown or structured refactor plan for one finding</td></tr>
+            <tr><td><code>verify</code></td><td>Whether a finding is resolved</td></tr>
+            <tr><td><code>who_uses</code></td><td>Usage class of an export, every file that uses it, and barrels that re-export it</td></tr>
+            <tr><td><code>safe_to_delete</code></td><td>Whether deleting or un-exporting it is safe, with reasons</td></tr>
+            <tr><td><code>rename_impact</code></td><td>Files and edit counts a rename touches. Nothing is written.</td></tr>
+            <tr><td><code>recent_files</code></td><td>Files touched in recent git history</td></tr>
+          </tbody>
+        </table>
+        <h3>AGENTS.md / CLAUDE.md</h3>
+        <div class="term snippet"><pre>Before deleting or renaming an export, ask Prune (`safe_to_delete`, `rename_impact`).
+After a refactor, run `prune check --fail-on medium` and fix what it reports.</pre></div>
+      </section>
 
-# Watch mode
-prune scan --watch</code></pre>
+      <section id="tui">
+        <h2>TUI &amp; watch</h2>
+        <p>Run <code>prune</code> with no arguments for the interactive TUI. <code>prune scan --watch</code> rescans headlessly as files change.</p>
+        <table>
+          <thead><tr><th>Key</th><th>Action</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Move up and down</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td>Finding detail</td></tr>
+            <tr><td><kbd>c</kbd></td><td>Copy the refactor plan</td></tr>
+            <tr><td><kbd>p</kbd></td><td>Save the plan to REFACTOR_PLAN.md</td></tr>
+            <tr><td><kbd>w</kbd></td><td>Toggle watch mode</td></tr>
+            <tr><td><kbd>s</kbd> / <kbd>f</kbd></td><td>Cycle strictness / filter by pattern</td></tr>
+            <tr><td><kbd>r</kbd> / <kbd>?</kbd> / <kbd>q</kbd></td><td>Rescan / help / quit</td></tr>
+          </tbody>
+        </table>
       </section>
 
       <section id="commands">
         <h2>Commands</h2>
-
-        <h3>prune</h3>
-        <p>Launch interactive TUI (default).</p>
-
-        <h3>prune scan</h3>
-        <p>Scan and output findings to stdout.</p>
-        <pre><code>prune scan           # Human-readable output
-prune scan --json    # JSON output
-prune scan --watch   # Watch for changes</code></pre>
-
-        <h3>prune plan &lt;id&gt;</h3>
-        <p>Generate a refactor plan for a specific finding.</p>
-        <pre><code>prune plan abc123          # Print to stdout
-prune plan abc123 --copy   # Copy to clipboard
-prune plan abc123 -o plan.md</code></pre>
-
-        <h3>prune init</h3>
-        <p>Create a <code>.prunerc</code> configuration file.</p>
-        <pre><code>prune init
-prune init --force   # Overwrite existing</code></pre>
-
-        <h3>prune config</h3>
-        <p>Show current configuration.</p>
-
-        <h3>prune license</h3>
-        <p>Manage your license.</p>
-        <pre><code>prune license status
-prune license trial --email you@example.com
-prune license activate PRUNE-SOLO-XXXXXX --email you@example.com</code></pre>
-      </section>
-
-      <section id="configuration">
-        <h2>Configuration</h2>
-
-        <p>Create a <code>.prunerc</code> file in your project root:</p>
-
-        <pre><code># .prunerc
-strictness = "default"  # relaxed | default | strict
-
-# Exclude patterns (glob)
-exclude = [
-  "node_modules/**",
-  "dist/**",
-  "**/*.test.ts",
-  "legacy/**"
-]
-
-# Disable specific patterns
-disabled_patterns = []
-
-# Custom thresholds (optional)
-[thresholds]
-god_file_max_exports = 30
-god_file_max_lines = 800
-interface_sprawl_similarity = 0.75
-redundant_logic_similarity = 0.80
-barrel_bloat_threshold = 15</code></pre>
-
-        <h3>Strictness Levels</h3>
         <table>
-          <thead>
-            <tr>
-              <th>Level</th>
-              <th>Description</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr>
-              <td><code>relaxed</code></td>
-              <td>Higher thresholds, fewer findings. Good for legacy codebases.</td>
-            </tr>
-            <tr>
-              <td><code>default</code></td>
-              <td>Balanced thresholds for most projects.</td>
-            </tr>
-            <tr>
-              <td><code>strict</code></td>
-              <td>Lower thresholds, more findings. For greenfield projects.</td>
-            </tr>
+            <tr><td><code>prune</code></td><td>Interactive TUI</td></tr>
+            <tr><td><code>prune scan</code></td><td>Findings with a score. <code>--json</code>, <code>--watch</code>, <code>--baseline [FILE]</code>, <code>--changed [REF]</code>, <code>--ci</code></td></tr>
+            <tr><td><code>prune check [FILES…]</code></td><td>Pre-commit gate over staged files. <code>--fail-on</code>, <code>--all</code>, <code>--baseline FILE</code>, <code>--no-baseline</code>, <code>--json</code></td></tr>
+            <tr><td><code>prune tasks</code></td><td>Prioritized task list. <code>--json</code>, <code>-n</code>, <code>--min-severity</code>, <code>--changed</code>, <code>--baseline</code>, <code>-o FILE</code></td></tr>
+            <tr><td><code>prune baseline</code></td><td>Write current findings to <code>.prune-baseline.json</code></td></tr>
+            <tr><td><code>prune fix</code></td><td>Safe autofix, dry run unless <code>--apply</code>. <code>--check CMD</code>, <code>--only unexport,delete-file</code>, <code>--path-prefix</code></td></tr>
+            <tr><td><code>prune rename FILE FROM TO</code></td><td>Rename an export across importers, dry run unless <code>--apply</code></td></tr>
+            <tr><td><code>prune plan ID</code></td><td>Markdown refactor plan. <code>--copy</code>, <code>-o FILE</code>, <code>--rescan</code></td></tr>
+            <tr><td><code>prune verify ID</code></td><td>Exit 0 when a finding is resolved. <code>--json</code>, <code>--quick</code></td></tr>
+            <tr><td><code>prune init</code></td><td>Write <code>.prunerc</code> and ignore <code>.prune/</code></td></tr>
+            <tr><td><code>prune config</code></td><td>Show the effective configuration</td></tr>
+            <tr><td><code>prune mcp</code></td><td>Serve MCP tools over stdio</td></tr>
           </tbody>
         </table>
+        <p>Every command takes <code>-p PATH</code> to run against another project root.</p>
       </section>
 
       <section id="patterns">
         <h2>Patterns</h2>
-
-        <h3>God File</h3>
-        <p>Files with too many exports or lines of code. These become maintenance nightmares and make it hard to understand what a module is responsible for.</p>
-        <p><strong>Default threshold:</strong> 30 exports or 1000 lines</p>
-
-        <h3>Interface Sprawl</h3>
-        <p>Multiple type definitions that are nearly identical. Common when AI generates new types instead of reusing existing ones.</p>
-        <p><strong>Default threshold:</strong> 80% structural similarity, 3+ occurrences</p>
-
-        <h3>Redundant Logic</h3>
-        <p>Functions with similar implementations that could be consolidated.</p>
-        <p><strong>Default threshold:</strong> 85% body similarity</p>
-
-        <h3>Barrel Bloat</h3>
-        <p><code>index.ts</code> files that re-export too many modules, defeating tree-shaking and increasing bundle size.</p>
-        <p><strong>Default threshold:</strong> 20 re-exports</p>
-
-        <h3>Dead Exports</h3>
-        <p>Symbols that are exported but never imported anywhere in the codebase.</p>
-
-        <h3>Over-Abstraction</h3>
-        <p>Wrapper functions that just call another function with no transformation. Adds indirection without value.</p>
-      </section>
-
-      <section id="license">
-        <h2>License</h2>
-
-        <h3>Start a Trial</h3>
-        <pre><code>prune license trial --email you@example.com</code></pre>
-        <p>14-day free trial with all features.</p>
-
-        <h3>Activate a License</h3>
-        <pre><code>prune license activate PRUNE-SOLO-XXXXXX-XXXXXX-XXXXXX --email you@example.com</code></pre>
-
-        <h3>Check Status</h3>
-        <pre><code>prune license status</code></pre>
-
-        <h3>Tiers</h3>
         <table>
-          <thead>
-            <tr>
-              <th>Tier</th>
-              <th>Price</th>
-              <th>Features</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Pattern</th><th>Finds</th></tr></thead>
           <tbody>
-            <tr>
-              <td>Solo</td>
-              <td>$29 one-time</td>
-              <td>CLI, all patterns, refactor plans</td>
-            </tr>
-            <tr>
-              <td>Pro</td>
-              <td>$99/year</td>
-              <td>Solo + watch mode, desktop app</td>
-            </tr>
-            <tr>
-              <td>Team</td>
-              <td>$249/year</td>
-              <td>Pro + 5 seats, CI integration</td>
-            </tr>
+            <tr><td>Dead exports</td><td>Unreachable files and exports, classified by <a href="#reachability">reachability</a></td></tr>
+            <tr><td>God file</td><td>Files whose behavior (functions, classes) exceeds the export limit, or whose distinct concepts do while the file is also long. Validators, schemas and <code>as const</code> data are declarations, not behavior.</td></tr>
+            <tr><td>Import cycle</td><td>Runtime value cycles. A type-only cycle is reported at low severity, and only when no value cycle runs through it.</td></tr>
+            <tr><td>Interface sprawl</td><td>Types, interfaces and object validators (<code>v.object</code>, <code>z.object</code>) that restate the same fields</td></tr>
+            <tr><td>Lexicon</td><td>One shape under several names, and glossary terms used for unrelated shapes</td></tr>
+            <tr><td>Redundant logic</td><td>Similar functions that should be consolidated</td></tr>
+            <tr><td>Barrel bloat</td><td>Index files re-exporting too many modules</td></tr>
+            <tr><td>Over-abstraction</td><td>Wrappers that only forward a call, and single-implementation interfaces</td></tr>
           </tbody>
         </table>
-
-        <p><a href="/#pricing">View full pricing details</a></p>
       </section>
-    </main>
+
+      <section id="reachability">
+        <h2>Reachability</h2>
+        <p>Prune builds the module graph from entry points and walks it twice: from product entries and from test files. Imports resolve through barrels (<code>export *</code>, aliased re-exports) and namespace imports to the symbol that defines them.</p>
+        <table>
+          <thead><tr><th>Class</th><th>Meaning</th><th>Fix</th></tr></thead>
+          <tbody>
+            <tr><td><code>used</code></td><td>Reached from product code, or consumed by a framework or tool</td><td>—</td></tr>
+            <tr><td><code>test_only</code></td><td>Only tests use it</td><td>Delete it with its tests</td></tr>
+            <tr><td><code>same_file_only</code></td><td>Only its own file uses it</td><td>Drop <code>export</code> (<code>prune fix</code>)</td></tr>
+            <tr><td><code>unused</code></td><td>Nothing reachable uses it</td><td>Delete it</td></tr>
+            <tr><td><code>unreachable</code></td><td>Its file is not reachable from any entry</td><td>Delete the file (<code>prune fix</code>)</td></tr>
+          </tbody>
+        </table>
+        <p><b>Entries</b> are discovered from <code>package.json</code> (<code>main</code>, <code>module</code>, <code>types</code>, <code>exports</code>, <code>bin</code>, file paths in <code>scripts</code>), tool config files (<code>*.config.*</code>, root <code>bunfig.toml</code>, CI yaml, <code>vercel.json</code>), files with a <code>#!</code> line, <code>.d.ts</code> declarations, and framework adapters:</p>
+        <ul>
+          <li><b>Next.js</b> (any directory with <code>next.config.*</code>): <code>app/**</code> route files (<code>page</code>, <code>layout</code>, <code>route</code>, <code>loading</code>, <code>error</code>, …), <code>pages/**</code>, <code>public/**</code>, root <code>middleware</code>/<code>proxy</code>/<code>instrumentation</code>.</li>
+          <li><b>Convex</b> (<code>convex.json</code> <code>functions</code>, else <code>convex/</code>): every function module is an entry. Registered functions count as used only when referenced through <code>api.*</code> / <code>internal.*</code> chains, <code>"a/b:fn"</code> strings, or <code>convex run</code>.</li>
+        </ul>
+        <p>Test files are read as reference sources even when <code>exclude</code> matches them, and they're never reported.</p>
+      </section>
+
+      <section id="config">
+        <h2>Configuration</h2>
+        <p><code>.prunerc</code> in the project root (TOML). Everything is optional.</p>
+        <div class="term snippet"><pre>strictness = "default"          <span class="m"># relaxed | default | strict</span>
+exclude = ["node_modules/**", "dist/**"]
+disabled_patterns = []
+
+[thresholds]
+god_file_max_exports = 25
+god_file_max_lines = 600
+interface_sprawl_similarity = 0.85
+dead_exports_min_per_file = 1
+
+[entries]                        <span class="m"># beyond the discovered ones</span>
+files = ["vercel.ts", "scripts/**"]
+test_files = ["**/*.test.ts", "**/__tests__/**", "e2e/**"]
+
+[dead_exports]
+report_unreachable_files = true
+report_test_only = true
+report_same_file = true
+
+[frameworks.convex]
+dirs = ["convex"]
+
+[frameworks.next]
+roots = ["."]
+
+[[boundaries]]                   <span class="m"># a fenced boundary owns its types</span>
+name = "inbox"
+paths = ["packages/inbox/**"]
+fenced = true
+
+[lexicon.glossary]
+draft = "a held reply awaiting review"
+
+[fix]
+check = "bun run typecheck"      <span class="m"># used by prune fix / rename</span></pre></div>
+        <p><b>Boundaries:</b> duplicate shapes across a fenced boundary are intentional and not reported. Duplicates inside it are.</p>
+      </section>
+
+      <section id="fix">
+        <h2>Safe autofix</h2>
+        <p><code>prune fix</code> handles the two dead-code fixes that are mechanical: dropping <code>export</code> from symbols only their own file uses, and deleting unreachable files. Unreachable files that import each other are deleted together.</p>
+        <div class="term snippet"><pre>prune fix                                        <span class="m"># dry run: print the plan</span>
+prune fix --apply --check "bun run typecheck"    <span class="m"># apply, verify, revert failures</span>
+prune rename src/thread.ts ThreadRow ThreadSummary --apply --check "bun run typecheck"</pre></div>
+        <p>Each unit is written, the check command runs, and the unit is reverted if the check fails.</p>
+      </section>
+
+      <section id="contributing">
+        <h2>Contributing</h2>
+        <p>Prune is MIT licensed and developed on <a href="https://github.com/dlabadini/prune">GitHub</a>. Issues and pull requests are welcome, and false positives with a minimal repro are especially welcome.</p>
+        <div class="term snippet"><pre>cargo test
+cargo test --test accuracy -- --nocapture   <span class="m"># precision/recall on labeled fixtures</span>
+cargo clippy --all-targets -- -D warnings</pre></div>
+        <p>New detectors and framework adapters should come with a labeled fixture under <code>tests/fixtures/</code>. Its <code>labels.json</code> lists the findings that must and must not appear.</p>
+      </section>
+    </article>
   </div>
 
   <footer class="footer">
-    <div class="footer-container">
-      <div class="footer-left">
-        <span class="logo">prune</span>
-        <span class="footer-copy">&copy; 2024 Prune Dev</span>
-      </div>
-      <div class="footer-links">
-        <a href="/docs">Docs</a>
-        <a href="https://github.com/prunecode/prune">GitHub</a>
-        <a href="mailto:hello@prune.dev">Contact</a>
+    <div class="wrap">
+      <span>prune · MIT licensed · © 2026</span>
+      <div class="footer-end">
+        <nav aria-label="Footer">
+          <a href="/docs">Docs</a>
+          <a href="/about">About</a>
+          <a href="/contact">Contact</a>
+          <a href="/privacy">Privacy</a>
+          <a href="https://github.com/dlabadini/prune">GitHub</a>
+          <a href="/llms.txt">llms.txt</a>
+        </nav>
+        <div class="theme-switch" role="group" aria-label="Color theme">
+          <button type="button" data-theme-choice="light" aria-pressed="true">light</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">dark</button>
+        </div>
       </div>
     </div>
   </footer>
+
+  <script src="/site.js" defer></script>
   <script type="module">
     import { inject } from 'https://cdn.jsdelivr.net/npm/@vercel/analytics@latest/dist/script.js';
     inject();

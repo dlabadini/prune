@@ -1,6 +1,7 @@
 # Rust
 /target/
-Cargo.lock
+.fastembed_cache/
+.prune/
 
 # IDE
 .idea/
@@ -20,5 +21,6 @@ website/node_modules/
 *.log
 *.tmp
 
-# License files (user-specific)
-license.json
+
+# Local agent tooling
+.claude/

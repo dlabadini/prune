@@ -1,0 +1,27 @@
+# Hooks for https://pre-commit.com. In your repo's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/dlabadini/prune
+#       rev: v0.2.0
+#       hooks:
+#         - id: prune          # uses `prune` on PATH (install.sh, cargo, or npm)
+#
+# `prune-cargo` builds Prune from source inside pre-commit instead (slow first run).
+
+- id: prune
+  name: prune check
+  description: Fail on new structural findings (dead exports, god files, duplicate types, import cycles) in staged TypeScript/JavaScript files.
+  entry: prune check
+  language: system
+  types_or: [ts, tsx, javascript, jsx]
+  require_serial: true
+  minimum_pre_commit_version: "3.0.0"
+
+- id: prune-cargo
+  name: prune check (build from source)
+  description: Same as `prune`, but pre-commit compiles Prune with cargo.
+  entry: prune check
+  language: rust
+  types_or: [ts, tsx, javascript, jsx]
+  require_serial: true
+  minimum_pre_commit_version: "3.0.0"

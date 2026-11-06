@@ -1,0 +1,156 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Prune public API",
+    "version": "1.0.0",
+    "summary": "Read-only facts about Prune for agents: install commands, latest version, detectors and MCP setup.",
+    "description": "Prune itself runs locally as a CLI and MCP server; this API does not analyze code. It tells agents how to install and configure Prune. No authentication. Errors are JSON objects of the form {\"error\": {\"code\", \"message\", \"hint\", \"docs\"}}.",
+    "license": { "name": "MIT", "identifier": "MIT" },
+    "contact": { "name": "Prune", "url": "https://github.com/dlabadini/prune/issues", "email": "hello@prune.dev" }
+  },
+  "servers": [{ "url": "https://prunecode.ai/api/v1" }],
+  "externalDocs": { "url": "https://prunecode.ai/docs" },
+  "paths": {
+    "/version": {
+      "get": {
+        "operationId": "getLatestVersion",
+        "summary": "Latest released Prune version",
+        "description": "Returns the latest Prune version, its license, and where releases are published.",
+        "responses": {
+          "200": { "description": "Latest version", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Version" } } } }
+        }
+      }
+    },
+    "/install": {
+      "get": {
+        "operationId": "getInstallCommands",
+        "summary": "Install commands",
+        "description": "Shell commands that install Prune, optionally filtered to one platform.",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "query",
+            "required": false,
+            "description": "Only return methods that support this platform.",
+            "schema": { "type": "string", "enum": ["macos", "linux", "windows"] }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Install methods", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InstallList" } } } },
+          "400": { "description": "Unknown platform", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/detectors": {
+      "get": {
+        "operationId": "listDetectors",
+        "summary": "Detectors",
+        "description": "Every pattern Prune detects, with its scoring tier and what it finds.",
+        "responses": {
+          "200": { "description": "Detectors", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DetectorList" } } } }
+        }
+      }
+    },
+    "/detectors/{id}": {
+      "get": {
+        "operationId": "getDetector",
+        "summary": "One detector",
+        "description": "A single detector by id, for example dead_exports.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "description": "Detector id.", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Detector", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Detector" } } } },
+          "404": { "description": "Unknown detector", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/mcp": {
+      "get": {
+        "operationId": "getMcpSetup",
+        "summary": "MCP server setup",
+        "description": "How to run Prune as a local MCP server, the config to add to an MCP client, and the tools it exposes.",
+        "responses": {
+          "200": { "description": "MCP setup", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Mcp" } } } }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Version": {
+        "type": "object",
+        "required": ["name", "version", "license", "repository"],
+        "properties": {
+          "name": { "type": "string" },
+          "version": { "type": "string", "description": "Semantic version." },
+          "license": { "type": "string" },
+          "repository": { "type": "string", "format": "uri" },
+          "releases": { "type": "string", "format": "uri" }
+        }
+      },
+      "Install": {
+        "type": "object",
+        "required": ["id", "platforms", "command"],
+        "properties": {
+          "id": { "type": "string", "enum": ["curl", "npm", "cargo"] },
+          "platforms": { "type": "array", "items": { "type": "string" } },
+          "command": { "type": "string", "description": "Shell command to run." },
+          "note": { "type": "string" }
+        }
+      },
+      "InstallList": {
+        "type": "object",
+        "required": ["install"],
+        "properties": { "install": { "type": "array", "items": { "$ref": "#/components/schemas/Install" } } }
+      },
+      "Detector": {
+        "type": "object",
+        "required": ["id", "name", "tier", "finds"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "tier": { "type": "string", "enum": ["essential", "recommended", "emerging"] },
+          "finds": { "type": "string" }
+        }
+      },
+      "DetectorList": {
+        "type": "object",
+        "required": ["detectors"],
+        "properties": { "detectors": { "type": "array", "items": { "$ref": "#/components/schemas/Detector" } } }
+      },
+      "McpTool": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": { "name": { "type": "string" }, "description": { "type": "string" } }
+      },
+      "Mcp": {
+        "type": "object",
+        "required": ["command", "args", "transport", "tools"],
+        "properties": {
+          "command": { "type": "string" },
+          "args": { "type": "array", "items": { "type": "string" } },
+          "transport": { "type": "string", "enum": ["stdio"] },
+          "setup": { "type": "object", "additionalProperties": true },
+          "tools": { "type": "array", "items": { "$ref": "#/components/schemas/McpTool" } }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message"],
+            "properties": {
+              "code": { "type": "string", "description": "Stable machine-readable code, e.g. not_found." },
+              "message": { "type": "string" },
+              "hint": { "type": "string", "description": "How to fix the request." },
+              "docs": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

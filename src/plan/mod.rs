@@ -42,7 +42,13 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
     md.push_str("# Prune Refactor Plan\n\n");
     md.push_str(&format!("**Generated:** {}\n", generated_at));
     md.push_str(&format!("**Finding ID:** {}\n", finding.id));
-    md.push_str("**Prune Version:** 0.1.0\n\n");
+    md.push_str(&format!(
+        "**Prune Version:** {}\n\n",
+        env!("CARGO_PKG_VERSION")
+    ));
+    md.push_str("## Next step\n\n");
+    md.push_str(&crate::score::action_prompt(finding));
+    md.push('\n');
 
     // Issue section
     md.push_str("## Issue\n\n");
@@ -81,6 +87,12 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
             ));
         }
         md.push('\n');
+    }
+
+    if !finding.action_summary.is_empty() {
+        md.push_str("## Prune action\n\n");
+        md.push_str(&finding.action_summary);
+        md.push_str("\n\n");
     }
 
     // Suggested Approach section
@@ -125,11 +137,11 @@ fn generate_markdown(finding: &Finding, generated_at: &str) -> String {
 
     // Verification section
     md.push_str("## Verification\n\n");
-    md.push_str("After refactoring, run:\n");
-    md.push_str("```bash\n");
-    md.push_str(&format!("prune scan --finding {}\n", finding.id));
-    md.push_str("```\n\n");
-    md.push_str("Expected result: Finding resolved or severity reduced.\n\n");
+    md.push_str("After the change, run `prune` again from this repo.\n\n");
+    md.push_str(&format!(
+        "Expected result: finding `{}` is gone.\n\n",
+        finding.id
+    ));
 
     // Footer
     md.push_str("---\n");
@@ -142,11 +154,12 @@ fn generate_acceptance_criteria(finding: &Finding) -> String {
     let mut criteria = Vec::new();
 
     match finding.pattern_type {
-        PatternType::InterfaceSprawl => {
-            criteria.push("- [ ] Single canonical type definition created".to_string());
-            criteria.push("- [ ] All inline type definitions removed or replaced".to_string());
-            criteria.push("- [ ] All imports updated to use canonical type".to_string());
+        PatternType::InterfaceSprawl | PatternType::Lexicon => {
+            criteria.push("- [ ] Shared bundles extracted to target module".to_string());
+            criteria.push("- [ ] Consumers compose via `extends` / shared facts types".to_string());
+            criteria.push("- [ ] Homonym names aligned to canonical lexicon".to_string());
             criteria.push("- [ ] No type errors in the codebase".to_string());
+            criteria.push("- [ ] Rescan: finding id should be gone".to_string());
         }
         PatternType::RedundantLogic => {
             criteria.push("- [ ] Duplicate logic consolidated into single function".to_string());
@@ -174,6 +187,12 @@ fn generate_acceptance_criteria(finding: &Finding) -> String {
             criteria.push("- [ ] Unnecessary abstraction layers removed".to_string());
             criteria.push("- [ ] Code still testable (verify test coverage)".to_string());
             criteria.push("- [ ] Call sites simplified".to_string());
+        }
+        PatternType::ImportCycle => {
+            criteria.push("- [ ] Cycle broken by a one-way dependency".to_string());
+            criteria
+                .push("- [ ] Shared symbols moved to a module both sides can import".to_string());
+            criteria.push("- [ ] No remaining import cycle among these files".to_string());
         }
     }
 

@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": { "@fixture/lib": ["packages/lib/src/index.ts"], "@/*": ["./*"] }
+  }
+}

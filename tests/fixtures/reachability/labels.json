@@ -1,0 +1,43 @@
+{
+  "dead_exports": {
+    "positive": [
+      "packages/lib/src/a.ts::sameFileA",
+      "packages/lib/src/a.ts::unusedA",
+      "packages/lib/src/a.ts::testOnlyA",
+      "packages/lib/src/b.ts::unusedB",
+      "packages/lib/src/types.ts::UnusedShape",
+      "convex/messages.ts::neverCalled",
+      "convex/messages.ts::listPublic",
+      "convex/lib/helpers.ts::unusedHelper",
+      "orphans/orphan.ts::*",
+      "orphans/orphan.ts::orphan",
+      "orphans/leaf.ts::*",
+      "orphans/leaf.ts::onlyFromOrphan"
+    ],
+    "negative": [
+      "packages/lib/src/a.ts::usedA",
+      "packages/lib/src/b.ts::b",
+      "packages/lib/src/types.ts::Shape",
+      "app/format.ts::money",
+      "app/format.ts::percent",
+      "app/dashboard/page.tsx::metadata",
+      "app/dashboard/page.tsx::default",
+      "convex/messages.ts::send",
+      "convex/messages.ts::deliver",
+      "convex/messages.ts::viaString",
+      "convex/messages.ts::runFromCli",
+      "convex/lib/helpers.ts::helper",
+      "convex/schema.ts::default",
+      "cycle/x.ts::fromX",
+      "cycle/y.ts::fromY",
+      "cycle/t1.ts::T1",
+      "cycle/t2.ts::T2",
+      "cycle/entry.ts::value",
+      "next.config.ts::default"
+    ]
+  },
+  "import_cycle": {
+    "positive": ["value:cycle/x.ts+cycle/y.ts", "type:cycle/t1.ts+cycle/t2.ts"],
+    "negative": []
+  }
+}
