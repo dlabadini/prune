@@ -12,7 +12,6 @@ work="$(mktemp -d)"
 # release asset name -> npm os/cpu
 targets=(
   "prune-darwin-aarch64:darwin:arm64"
-  "prune-darwin-x86_64:darwin:x64"
   "prune-linux-aarch64:linux:arm64"
   "prune-linux-x86_64:linux:x64"
 )

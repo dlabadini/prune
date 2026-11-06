@@ -34,7 +34,7 @@ npm i -D prunecode
 cargo install prunecode
 ```
 
-Binaries for macOS and Linux (x86_64, arm64) are attached to each
+Binaries for Apple Silicon macOS and Linux (x86_64, arm64) are attached to each
 [GitHub release](https://github.com/dlabadini/prune/releases).
 
 ## Quick start

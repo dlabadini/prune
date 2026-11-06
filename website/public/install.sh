@@ -37,6 +37,11 @@ case "$ARCH" in
         ;;
 esac
 
+if [ "$PLATFORM-$ARCH" = "darwin-x86_64" ]; then
+    echo "Prune ships for Apple Silicon Macs only; Intel Macs are not supported."
+    exit 1
+fi
+
 BINARY_NAME="prune-${PLATFORM}-${ARCH}"
 
 echo "Installing Prune for ${PLATFORM}-${ARCH}..."

@@ -18,7 +18,6 @@
   },
   "optionalDependencies": {
     "prunecode-darwin-arm64": "0.2.0",
-    "prunecode-darwin-x64": "0.2.0",
     "prunecode-linux-arm64": "0.2.0",
     "prunecode-linux-x64": "0.2.0"
   }
